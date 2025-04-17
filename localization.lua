@@ -1,31 +1,13 @@
 -- 
--- Localisation for MobInfo
+-- Default English Localisation for MobInfo
 --
--- created by Stephan Wilms on the 27th of July 2005
---
-
---
--- Default / English localization
+-- created by Stephan Wilms 
 --
 
 MI_DESCRIPTION = "adds information about mobs to the tooltip and adds health/mana info to the target frame"
 
-MI_MOB_DIES_WITH_XP = "(.+) dies, you gain (%d+) experience"
-MI_MOB_DIES_WITHOUT_XP = "(.+) dies"
-MI_PARSE_SPELL_DMG = "(.+)'s (.+) hits you for (%d+)"
-MI_PARSE_BOW_DMG = "(.+)'s (.+) hits you for (%d+)"
-MI_PARSE_COMBAT_DMG = "(.+) hits you for (%d+)"
-MI_PARSE_SELF_MELEE = "You hit (.+) for (%d+)"
-MI_PARSE_SELF_MELEE_CRIT = "You crit (.+) for (%d+)"
-MI_PARSE_SELF_SPELL = "Your (.+) hits (.+) for (%d+)"
-MI_PARSE_SELF_SPELL_CRIT = "Your (.+) crits (.+) for (%d+)"
-MI_PARSE_SELF_BOW = "Your (.+) hits (.+) for (%d+)"
-MI_PARSE_SELF_BOW_CRIT = "Your (.+) crits (.+) for (%d+)"
-MI_PARSE_SELF_PET = "(.+) hits (.+) for (%d+)"
-MI_PARSE_SELF_PET_CRIT = "(.+) crits (.+) for (%d+)"
-MI_PARSE_SELF_PET_SPELL = "(.+)'s (.+) hits (.+) for (%d+)"
-MI_PARSE_SELF_PET_SPELL_CRIT = "(.+)'s (.+) crits (.+) for (%d+)"
-MI_PARSE_SELF_SPELL_PERIODIC = "(.+) suffers (%d+) (.+) damage from your (.+)"
+MI2_SpellSchools = { Arcane="ar", Fire="fi", Frost="fr", Shadow="sh", Holy="ho", Nature="na" }
+
 
 MI_TXT_GOLD   = " Gold"
 MI_TXT_SILVER = " Silver"
@@ -66,6 +48,97 @@ MI_TXT_SHOWING			= "List Shows: "
 MI_TXT_DROPPED_BY		= "Dropped By "
 MI_TXT_LOCATION			= "Location: "
 MI_TXT_DEL_SEARCH_CONFIRM = "Do you really want to DELETE the %d Mobs in the search result list from the MobInfo database ?"
+MI_TXT_WRONG_LOC		= "ERROR : MobInfo database locale is incompatible with your WoW client locale. MobInfo database is unusable until fixed."
+MI_TXT_STATUS = "Status: "
+MI_TXT_STATUS_ALREADY = "Status: <data already imported"
+MI_TXT_STATUS_OLD = "Status: <import database too old for import>"
+MI_TXT_STATUS_WRONG = "Status: <import database has wrong language (locale)>"
+MI_TXT_STATUS_AVAILABLE = " available for import"
+MI_TXT_STATUS_NOIMPORT = "Status: <no import data>"
+MI_TXT_MOBS = " Mobs"
+MI_TXT_MOBS_1 = " Mobs:"
+MI_TXT_HP_VALUES = " HP values"
+MI_TXT_MANA = " Mana"
+MI_TXT_HP = "HP    "
+MI_TXT_LEVEL = " L"
+MI_TXT_XP = "XP    "
+MI_TXT_KTL = " KtL    "
+MI_TXT_DMG = "Dmg "
+MI_TXT_DPS = " Dps   "
+MI_TXT_KILLS = "Kills  "
+MI_TXT_LOOTS = " Loots"
+MI_TXT_CL = "CL     "
+MI_TXT_EL = " EL      "
+MI_TXT_VAL = "Val    "
+MI_TXT_COINS = " Coins"
+MI_TXT_Q = "Q      "
+MI_TXT_DEBUG_INFO = "--------------  D e b u g   I n f o  --------------"
+MI_TXT_DEBUG_DBG = "[DBG] "
+MI_TXT_DEBUG_BI = "bi(basic info)"
+MI_TXT_DEBUG_QI = "qi(quality info)"
+MI_TXT_DEBUG_ML = "ml(mob location)"
+MI_TXT_DEBUG_IL = "il(item list)"
+MI_TXT_DEBUG_RE = "re(resists)"
+MI_TXT_DEBUG_CHAR_DATA = "(char data)"
+MI_TXT_DEBUG_HP = "hp(health data)"
+MI_TXT_IMMUN = "Immun:"
+MI_TXT_RESIST = "Resist:"
+MI_TXT_NEW_CORPSE = "storing new corpse ID"
+MI_TXT_LOOT_SLOT = "Loot: slot"
+MI_TXT_Q_NAME = "name"
+MI_TXT_Q_ID = "id"
+MI_TXT_Q_q = "q"
+MI_TXT_REC_NEW_DPS = "recording new dps: idx"
+MI_TXT_NEW_DPS = "new dps"
+MI_TXT_REC_NEW_MIN_DMG = "recording new MIN dmg "
+MI_TXT_REC_NEW_DMG_FOR = " for "
+MI_TXT_REC_NEW_DMG_OLD = "old"
+MI_TXT_REC_NEW_MAX_DMG = "recording new MAX dmg "
+MI_TXT_REC_KILL_MOB = "recording kill: mob"
+MI_TXT_REC_KILL_MOB_KILLS = "kills"
+MI_TXT_REC_KILL_MOB_XP = "XP"
+MI_TXT_REC_LOC = "recording location"
+MI_TXT_SLASH_VER = "v"
+MI_TXT_SLASH_DAT_TARGET = "data for target "
+MI_TXT_SLASH_DAT_DEL = " has been deleted"
+MI_TXT_SLASH_DAT_DB_DEL = "database deleted: "
+MI_TXT_SLASH_DB_IMPORT = " starting external database import ...."
+MI_TXT_SLASH_IMPORTED = " imported "
+MI_TXT_SLASH_NEW_MOBS = " new Mobs"
+MI_TXT_SLASH_NEW_HP_VAL = " new health values"
+MI_TXT_SLASH_NEW_ITEMS = " new loot items"
+MI_TXT_SLASH_UPD_DATA = " updated data for "
+MI_TXT_SLASH_EXS_MOBS = " existing Mobs"
+MI_TXT_SLASH_NOT_UPD = " did NOT update data for "
+MI_TXT_SLASH_VERSION = " MobInfo-2 Version "
+MI_TXT_SLASH_USAGE = " Usage: enter /mobinfo2 or /mi2 to open interface"
+MI_TXT_SLASH_HELP = " for AddOn help go to "
+MI_TXT_SLASH_OFF = "-OFF-"
+MI_TXT_SLASH_ON = "-ON-"
+MI_TXT_SEARCH_DEL = "search result deleted : "
+MI_TXT_SEARCH_MOBS = " Mobs"
+MI_TXT_SEARCH_LVL = "  L"
+MI_TXT_EVENTS_NEW_TARGET = "new target: id"
+MI_TXT_EVENTS_LAST = "last"
+MI_TXT_EVENTS_NON_MOB = "non mob loot event: action"
+MI_TXT_EVENTS_TYPE = "type"
+MI_TXT_EVENTS_NO_XP = "no XP kill event: mob"
+MI_TXT_EVENTS_KILL_XP = "kill event with XP: mob"
+MI_TXT_EVENTS_XP = "xp"
+MI_TXT_EVENTS_MI_VER = "MobInfo-2  v"
+MI_TXT_EVENTS_MI_LOADED = "  Loaded, enter /mi2 or /mobinfo2 for interface"
+MI_TXT_CONVDROPRATE_CONVERTER = "DR Converter: "
+MI_TXT_CONVDROPRATE_MOBSFOUND = " Mobs found in DropRate data,"
+MI_TXT_CONVDROPRATE_NEWMOBSFOUND = " new Mobs added to database,"
+MI_TXT_CONVDROPRATE_EXISTINGMOBS = " existing Mobs expanded,"
+MI_TXT_CONVDROPRATE_PARTIALMOBS = " Mobs partially converted,"
+MI_TXT_CONVDROPRATE_SKIPPEDITEMS = " unknown items skipped,"
+MI_TXT_CONVDROPRATE_ADDEDITEMS = " items added to database,"
+MI_TXT_CONVDROPRATE_CONVERSTART = "DropRate conversion started ..."
+MI_TXT_CONVDROPRATE_NOTFOUND = "DropRate database not found"
+
+MI2_CHATMSG_MONSTEREMOTE = "attempts to run away"
+
 BINDING_HEADER_MI2HEADER	= "MobInfo 2"
 BINDING_NAME_MI2CONFIG	= "Open MobInfo2 Options"
 
@@ -208,6 +281,10 @@ MI2_OPTIONS["MI2_OptShowBlankLines"] =
 { text = "Show Blank Lines"; help = "Show Blank lines in ToolTip";
 info = "Blank lines are meant to improve readability by\ncreating sections in the tooltip" }
 
+MI2_OPTIONS["MI2_OptShowResists"] = 
+{ text = "Resists and Immunities"; help = "Show resistances and immunities in ToolTip";
+info = "Recorded data about the Mobs elemental spell school\nresistances or immunities is added to the tooltip." }
+
 MI2_OPTIONS["MI2_OptCombinedMode"] = 
 { text = "Combine Same Mobs"; help = "Combine data for Mob with same name";
 info = "Combined mode will accumulate the data for Mobs with\nthe same name but different level. When enabled a\nindicator gets displayed in the tooltip" }
@@ -291,14 +368,18 @@ info = "You can choose the quality level of items to be recorded."; }
 
 MI2_OPTIONS["MI2_OptSaveBasicInfo"] = 
 { text = "Record basic Mob info"; help = "Record a set of basic mob information.";
-info = "Basic mob info includes: xp, mob type, counters for: loot, empty loot, cloth, money, items value"; }
+info = "Basic mob info includes: mob type, counters for: loot, empty loot, cloth, money, items value, items quality overview"; }
 
 MI2_OPTIONS["MI2_OptSaveCharData"] = 
 { text = "Record character specific Mob data"; help = "Record all Mob data that is character specific.";
-info = "This will enable or disable saving of the following data:\nnumber of kills, min/max damage, DPS (damage per sec)\n\nThis data is saved separately for each character. Saving it can\nonly be enabled/disabled for the entire set of 4 values"; }
+info = "This will enable or disable saving of the following data:\nnumber of kills, min/max damage, DPS (damage per sec), Mob XP\n\nThis data is saved separately for each character. Saving it can\nonly be enabled/disabled for the entire set of 4 values"; }
 
 MI2_OPTIONS["MI2_OptSaveLocation"] = 
 { text = "Record data describing the Mob location"; help = "Record the area and coordinates where the Mob can be found." }
+
+MI2_OPTIONS["MI2_OptSaveResist"] = 
+{ text = "Record data about Resistances & Immunities"; help = "Record data about a Mobs resistances and immunities to spell schools.";
+info = "For spell schools MobInfo records how many spells per school\nhit successfully versus how many are resisted."; }
 
 MI2_OPTIONS["MI2_OptItemsQuality"] = 
 { text = ""; help = "Record loot item details for selected quality and better.";

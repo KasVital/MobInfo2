@@ -5,60 +5,16 @@
 -- All option dialog settings use slash commands for performing their
 -- actions.
 --
-
-miVersionNo = ' 2.97'
-
-miVersion = mifontYellow..'MobInfo-2 Version '..miVersionNo..mifontGreen..' http://www.dizzarian.com/forums/viewforum.php?f=16'
-miPatchNotes = mifontYellow..
-  'MobInfo-2 Version '..miVersionNo..'\n'..
-  '  ver 2.97\n'..
-  '    - updated to comply with newest WoW version 1.11\n'..
-  '    - show items on search options page in correct item color\n'..
-  '    - search options page again shows result list size\n'..
-  '    - fixed bug in search for Mobs that drop a certain item\n\n'..
-  '  ver 2.96\n'..
-  '    - new feature: store health value obtained through Beast Lore in health database\n'..
-  '    - new feature: added chinese translation submitted by Andyca Chiou\n'..
-  '    - fixed nil error for items with legendary and artifact rarity\n\n'..
-  '  ver 2.95\n'..
-  '    - bugfix release : fixes wrong max health display\n\n'..
-  '  ver 2.94\n'..
-  '    - huge update of MobInfo vendor sell price table (over 1000 new prices)\n'..
-  '    - DropRate conversion now supports LootLink databases\n'..
-  '    - fixed: DropRate conversion nil bug "Mobinfo2.lua Line: 383"\n'..
-  '    - fixed bug where health was displayed wrong after using "BeastLore" on Mob\n\n'..
-  '  ver 2.93\n'..
-  '    - new feature: implemented DropRate database converter from NakorNH\n'..
-  '    - bugfix: correctly import locations for mobs in instances\n'..
-  '    - added new items (loot from Silithus) to MobInfo item price table\n'..
-  '    - several new skinning loot items added to skinning loot detection table\n\n'..
-  '  ver 2.92\n'..
-  '    - new feature: you can choose to import only unknown (ie. new) Mobs\n'..
-  '    - improved item colors in Mob tooltip for better readability\n'..
-  '    - fixed all health/mana updating issues for unit frame and tooltip\n'..
-  '    - fixed max health not increasing correctly for group member targets\n\n'..
-  '  ver 2.91\n'..
-  '    - new feature: importing of externally supplied MobInfo databases\n'..
-  '    - new feature: option to delete all Mobs shown in search result\n'..
-  '    - added Turtle Scales to skinning loot detection table\n'..
-  '    - show all "green hills of Strangle" pages on one tooltip line\n'..
-  '    - item list on search page: show all items if item name field is empty\n'..
-  '    - fixed: mob name search errors on special chars\n'..
-  '    - fixed: correct independant show/hide of basic loot items\n\n'..
-  '  ver 2.90\n'..
-  '    - added separate tooltip option for cloth and skinning loot\n'..
-  '    - show drop percentages for items in Mob tooltip\n'..
-  '    - calculate skinning loot percantage based on skinned counter\n'..
-  '    - rearranged tooltips options page\n'..
-  '    - new skinning loot support for Shiny Fish Scales and Red Whelp Scales\n\n'..
-  '  For all previous patch notes and to report bugs please visit http://www.dizzarian.com/forums/viewforum.php?f=16'
-
+-- Note: version history now located in ReadMe.txt
+--
 
 local MI2_DeleteMode = ""
 
-
 -- Configs
 function MI2_SlashAction_Default()
+
+MI2_ScanSpellbook()
+
 	MobInfoConfig.ShowClass = 1
 	MobInfoConfig.ShowHealth = 1
     MobInfoConfig.ShowMana = 0
@@ -77,6 +33,7 @@ function MI2_SlashAction_Default()
 	MobInfoConfig.ShowItems = 1
 	MobInfoConfig.ShowLocation = 1
 	MobInfoConfig.ShowClothSkin = 1
+	MobInfoConfig.ShowResists = 1
 end
 
 function MI2_SlashAction_AllOn()
@@ -98,6 +55,7 @@ function MI2_SlashAction_AllOn()
     MobInfoConfig.ShowItems = 1
 	MobInfoConfig.ShowLocation = 1
 	MobInfoConfig.ShowClothSkin = 1
+	MobInfoConfig.ShowResists = 1
 end
 
 function MI2_SlashAction_AllOff()
@@ -119,6 +77,7 @@ function MI2_SlashAction_AllOff()
     MobInfoConfig.ShowItems = 0
 	MobInfoConfig.ShowLocation = 0
 	MobInfoConfig.ShowClothSkin = 0
+	MobInfoConfig.ShowResists = 0
 end
 
 function MI2_SlashAction_Minimal()
@@ -140,6 +99,7 @@ function MI2_SlashAction_Minimal()
     MobInfoConfig.ShowItems = 0
 	MobInfoConfig.ShowLocation = 0
 	MobInfoConfig.ShowClothSkin = 0
+	MobInfoConfig.ShowResists = 0
 end
 
 
@@ -175,7 +135,7 @@ function MI2_RegisterWithAddonManagers()
 			{
 				id = "MobInfo2",
 				name = "MobInfo2",
-				subtext = "v"..miVersionNo,
+				subtext = MI_TXT_SLASH_VER..miVersionNo,
 				tooltip = MI_DESCRIPTION,
 				icon = "Interface\\AddOns\\MobInfo2\\MobInfoIcon",
 				callback = function(state) MI2_SlashParse( "", false ) end,
@@ -231,7 +191,7 @@ function MI2_SlashAction_ClearTarget()
 		MI2_DeleteMobData( index )
 		MI2_DbOptionsFrameOnShow()
 		ClearTarget()
-		chattext( "data for "..mifontGreen..index..mifontWhite.." has been cleared" )
+		chattext( MI_TXT_SLASH_DAT_TARGET..mifontGreen..index..mifontWhite..MI_TXT_SLASH_DAT_DEL )
 	end
 end  -- MI2_SlashAction_ClearTarget()
 
@@ -243,20 +203,20 @@ end  -- MI2_SlashAction_ClearTarget()
 -- MobHealth databases.
 -----------------------------------------------------------------------------
 function MI2_Slash_ClearAllConfirmed()
-
 	if MI2_DeleteMode == "MobDb" then
-		MobInfoDB = {}
-		MI2_ItemNameTable = {}
-		MobInfoDB["DatabaseVersion:0"] = { ver = MI2_DB_VERSION }
-		MI2_CharTable = {}
-		MI2_CharTable.charCount = 0
+		local curZoneName = MI2_ZoneTable[MI2_CurZone]
+		MI2_DeleteAllMobData()
+		MI2_ZoneTable[MI2_CurZone] = curZoneName
+		MobInfoConfig.ImportSignature = ""
 	elseif MI2_DeleteMode == "HealthDb" then
+		MI2_MobHealth_ClearTargetData()
 		MI2_MobHealth_Reset()
 	elseif MI2_DeleteMode == "PlayerDb" then
 		MobHealthPlayerDB = {}
 	end
-	chattext( "<MobInfo> database deleted" )
+	chattext( MI_TXT_SLASH_DAT_DB_DEL..MI2_DeleteMode )
 	MI2_DbOptionsFrameOnShow()
+	ClearTarget()
 end  -- MI2_Slash_ClearAllConfirmed()
 
 
@@ -327,6 +287,9 @@ function MI2_Slash_TrimDownConfirmed()
 		if  MobInfoConfig.SaveItems == 0 then
 			mobInfo.il = nil
 		end
+		if  MobInfoConfig.SaveResist == 0 then
+			mobInfo.re = nil
+		end
 		if  MobInfoConfig.SaveCharData == 0 then
 			MI2_RemoveCharData( mobInfo )
 		end
@@ -342,7 +305,7 @@ function MI2_Slash_TrimDownConfirmed()
 	end
 
 	-- force a cleanup after trimming down
-	MobInfoDB["DatabaseVersion:0"] = { ver = MI2_DB_VERSION - 1 }
+	MI2_ClearMobCache()
 	MI2_CleanupDatabases()
 
 	MI2_DbOptionsFrameOnShow()
@@ -374,7 +337,7 @@ local function MI2_UpdateMob( mobIndex, newMobInfo )
 	MI2_GetMobDataFromMobInfo( existingMobInfo, existingMobData )
 	MI2_GetMobDataFromMobInfo( newMobInfo, newMobData )
 	MI2_AddTwoMobs( existingMobData, newMobData )
-	MI2x_StoreMobData( existingMobData, nil, nil, MI2_PlayerName, mobIndex )
+	MI2_StoreAllMobData( existingMobData, nil, nil, MI2_PlayerName, mobIndex )
 end -- MI2_UpdateMob()
 
 -----------------------------------------------------------------------------
@@ -385,33 +348,25 @@ end -- MI2_UpdateMob()
 -- zone tables.
 -----------------------------------------------------------------------------
 local function MI2_AdaptImportLocation( mobInfo, importZoneTable )
-	-- decode mob location information: only adapt mobs from instances
+	-- decode mob location information
 	local mobData = {}
 	MI2_DecodeMobLocation( mobInfo, mobData )
-	if not mobData.location or mobData.location.z < 100 then return end
+	local loc = mobData.location
+	if not loc or not loc.z then return end
 
-	-- instance mob found: find the name of the instance
-	local zoneId = mobData.location.z
-	local zoneName = importZoneTable[zoneId]
-	if not zoneName then
-		-- unknown import zone ID : search zone name and add it to the zone table
-		for name, id in importZoneTable do
-			if id == zoneId then
-				zoneName = name
-				importZoneTable[zoneId] = zoneName
-			end
-		end
+	-- find correct zone name
+	local zone = mobData.location.z
+	local cont = mobData.location.c
+	local zoneName = importZoneTable[zone]
+	if not zoneName and cont then
+		zoneName = MI2_Zones[cont][zone]
 	end
 
-	-- find the corrected zone ID for the zone name
-	if zoneName then
-		if not MI2_ZoneTable[zoneName] then
-			MI2_ZoneTable.cnt = MI2_ZoneTable.cnt + 1
-			MI2_ZoneTable[zoneName] = 100 + MI2_ZoneTable.cnt
-		end
-		local correctedZoneId = MI2_ZoneTable[zoneName]
-		local loc = mobData.location
-		mobInfo.ml = (loc.x1 or "").."/"..(loc.y1 or "").."/"..(loc.x2 or "").."/"..(loc.y2 or "").."/0/"..correctedZoneId
+	-- update the mobs location info
+	if zoneName and zoneName ~= "" then
+		MI2_SetNewZone( zoneName, cont, zone)
+		importZoneTable[MI2_CurZone] = zoneName
+		mobInfo.ml = (loc.x1 or "").."/"..(loc.y1 or "").."/"..(loc.x2 or "").."/"..(loc.y2 or "").."/"..cont.."/"..zone
 	else
 		mobInfo.ml = nil
 	end
@@ -425,9 +380,10 @@ end -- MI2_AdaptImportLocation()
 -----------------------------------------------------------------------------
 function MI2_SlashAction_ImportMobData()
 	local newMobs, updatedMobs, newHealth, newItems = 0, 0, 0, 0
-	local chatPrefix = mifontLightBlue.."<MobInfo Import>"..mifontWhite
+	local mobIndex, mobInfo, healthInfo
+	local oldCurZone = MI2_CurZone
 
-	chattext( chatPrefix.." starting external database import ...." )
+	chattext( MI_TXT_SLASH_DB_IMPORT )
 
 	-- import loot items into main loot item database
 	for itemId, itemInfo in MI2_ItemNameTable_Import do
@@ -443,6 +399,17 @@ function MI2_SlashAction_ImportMobData()
 			MobHealthDB[mobIndex] = healthInfo
 			newHealth = newHealth + 1
 		end
+	end
+
+	-- swap name/id in zone name table
+	if MI2_ZoneTable_Import.cnt then
+		local zoneName, zoneId
+		local newTable = {}
+		MI2_ZoneTable_Import.cnt = nil
+		for zoneName, zoneId in MI2_ZoneTable_Import do
+			newTable[zoneId] = zoneName
+		end
+		MI2_ZoneTable_Import = newTable
 	end
 
 	-- import Mobs into main Mob database
@@ -467,13 +434,16 @@ function MI2_SlashAction_ImportMobData()
 		MI2_BuildXRefItemTable()
 	end
 
-	chattext( chatPrefix.." imported "..newMobs.." new Mobs" )
-	chattext( chatPrefix.." imported "..newHealth.." new health values" )
-	chattext( chatPrefix.." imported "..newItems.." new loot items" )
+	-- restore current zone ID after import
+	MI2_CurZone = oldCurZone
+
+	chattext( MI_TXT_SLASH_IMPORTED..newMobs..MI_TXT_SLASH_NEW_MOBS )
+	chattext( MI_TXT_SLASH_IMPORTED..newHealth..MI_TXT_SLASH_NEW_HP_VAL )
+	chattext( MI_TXT_SLASH_IMPORTED..newItems..MI_TXT_SLASH_NEW_ITEMS )
 	if MobInfoConfig.ImportOnlyNew == 0 then
-		chattext( chatPrefix.." updated data for "..updatedMobs.." existing Mobs" )
+		chattext( MI_TXT_SLASH_UPD_DATA..updatedMobs..MI_TXT_SLASH_EXS_MOBS )
 	else
-		chattext( chatPrefix.." did NOT update data for "..updatedMobs.." existing Mobs" )
+		chattext( MI_TXT_SLASH_NOT_UPD..updatedMobs..MI_TXT_SLASH_EXS_MOBS )
 	end
 
 	-- update database options frame
@@ -502,9 +472,9 @@ end -- MI2_SlashAction_DeleteSearch()
 -- Add all Slash Commands
 -----------------------------------------------------------------------------
 function MI2_SlashInit()
-  SlashCmdList["MOBINFO"] = MI2_SlashParse
-  SLASH_MOBINFO1 = "/mobinfo2" 
-  SLASH_MOBINFO2 = "/mi2" 
+	SlashCmdList["MOBINFO"] = MI2_SlashParse
+	SLASH_MOBINFO1 = "/mobinfo2" 
+	SLASH_MOBINFO2 = "/mi2" 
 end  -- MI2_SlashInit()
 
 
@@ -530,26 +500,14 @@ function MI2_SlashParse( msg, updateOptions )
 		end
 		return
 	elseif  cmd == 'version'  then
-		chattext( miVersion )
-		return
-	elseif  cmd == 'notes'  then
-		chattext( miPatchNotes )
+		chattext( MI_TXT_SLASH_VERSION..miVersionNo )
 		return
 	elseif  cmd == 'convertdroprate'  then
 		MI2_StartDropRateConversion()
 		return
 	elseif  cmd == 'help'  then
-		chattext( mifontYellow.. 'Usage /mobinfo2 <cmd> or /mi2 <cmd>' )
-		chattext( 'Where <cmd> is any of the following:' )
-		for idx, val in MI2_OPTIONS do
-			if  val.help and val.help ~= ""  then
-				local prefix = string.sub(idx, 1, 7)
-				local option = string.lower( string.sub(idx, 8) )
-				if prefix == "MI2_Opt" then
-					chattext( mifontGreen..option..' - '..mifontYellow..val.help )
-				end
-			end
-		end
+		chattext( MI_TXT_SLASH_USAGE )
+		chattext( MI_TXT_SLASH_HELP..mifontLightGreen..'http://www.dizzarian.com/forums/viewforum.php?f=16' )
 		return
 	end
 
@@ -605,7 +563,7 @@ function MI2_OptionParse( optionName, optionData, param, updateOptions )
 	elseif  MobInfoConfig[optionName]  then
 		-- it is a switch toggle option:
 		-- get current option value and toggle it to the opposite state (On<->Off)
-		local valTxt = { val0 = "-OFF-",  val1 = "-ON-" }
+		local valTxt = { val0 = MI_TXT_SLASH_OFF,  val1 = MI_TXT_SLASH_ON }
 		local optValue = MobInfoConfig[ optionName ]
 		optValue = 1 - optValue  -- toggle option
 		MobInfoConfig[optionName] = optValue
@@ -613,7 +571,8 @@ function MI2_OptionParse( optionName, optionData, param, updateOptions )
 
 		-- special case: disabling MobInfo requires extra processing
 		if optionName == "DisableMobInfo" then MI2_UpdateMobInfoState() end
-
+		-- some toggle switches control recording options which in turn controls events
+		MI2_InitializeEventTable()
 	else
 		-- special action commands have a corresponding handler function
 		local actionHandlerName = "MI2_SlashAction_"..optionName

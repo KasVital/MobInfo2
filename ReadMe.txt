@@ -1,6 +1,3 @@
-Turtle edit
-- Fixed lua errors that occured on some instanced mobs
-
 MobInfo-2 is a World of Warcraft AddOn that provides you with useful additional information about Mobs (ie. opponents/monsters). It adds new information to the game's Tooltip whenever you hover with your mouse over a mob. It also adds a numeric display of the Mobs health and mana (current and max) to the Mob target frame. MobInfo-2 is the continuation of the now abandoned "MobInfo" by Dizzarian combined with the original "MobHealth2" by Wyv. 
 
 [[ IMPORTANT NOTE FOR DEVELOPERS OF OTHER ADDONS:           ]]
@@ -9,7 +6,7 @@ MobInfo-2 is a World of Warcraft AddOn that provides you with useful additional 
 
 *****************************
 ***     MobInfo-2 Data    ***
-
+*****************************
 MobInfo collects data whenever you fight a Mob. It starts off with an empty database, which fills up automatically the more you fight and play. The data it collects is used for enhancing the game tooltip and the game target frame. It is also available to other AddOns (mostly the mob/target health values).
 
 NEW FEATURE: The MobInfo database has become searchable. You can do a search for the 12 most profitable Mobs. You will find the "Search" button on the "Database" page of the options dialog.
@@ -17,7 +14,7 @@ NEW FEATURE: The MobInfo database has become searchable. You can do a search for
 
 ******************************************
 *** Extra Information For Game Tooltip ***
-
+******************************************
 The extra information available to show on the game tooltip is:
 
 Class - class of mob
@@ -41,13 +38,13 @@ Note that MobInfo offers a "Combined Mode" where the data of Mobs with the same 
 
 ***************************************
 *** Target Frame Health/Mana Values ***
-
+***************************************
 MobInfo can display the numeric and percentage values for your current targets health and mana right on the target frame (formerly known as MobHealth functionality). This display is highly configurable through the MobInfo options dialog (position, font, size, etc).
 
 
 ******************************
 *** MobInfo Options Dialog ***
-
+******************************
 Type "/mi2" or "/mobinfo2" on the chat prompt to open the MobInfo2 options dialog. This dialog gives you full interactive control over EVERYTHING that MobInfo can do. All options take immediate effect. Simply try them all out. Decent defaults get set when you start MobInfo for the first time. Note that the 3 main categories "Tooltip", "Mob Health/Mana", and "Database Maintenance" have separate dedicated options pages within the options dialog.
 
 Note that everything in the options dialog has an associated help text that explains to you what the option does. The help texts are shown automatically as a tooltip.
@@ -57,20 +54,37 @@ Note that everything in the options dialog has an associated help text that expl
 
 **********************
 *** How to Install ***
+**********************
+Within the ZIP file you find a folder called "MobInfo2". This folder has to be copied into the folder "World of Warcraft\Interface\AddOns\". Thus you should end up with a folder called:
 
-Unpack the ZIP file and copy the folder 'MobInfo2' into your 'World of Warcraft\Interface\AddOns' folder. MobInfo-2 will automatically load the next time you login with one of your chars. When starting the first time you might get a message that a separate MobHealth AddOn was detected. If so please remove it, or at least disable it. You will find that it is no longer needed, because MobInfo-2 is a full featured and fully compatible replacement. 
+World of Warcraft\Interface\AddOns\MobInfo2
+
+Now log into your WoW account. On the char selection screen you should see in the bottom right corner a button called "AddOns". Clicking this button opens the AddOn management window of WoW. You can enable or disable AddOns in here. MobInfo should be in the list of AddOn and should have a "Tick" mark to say that it is enabled. Now exit the AddOn window and log into the game with one of your chars. At the chat prompt simply enter "/mi2" to get the MobInfo options window. This options window allows you to fine tune MobInfo to your personal preferences. Note that by default it is already enabled with a set of sensible defaults.
+
+When starting the first time you might get a message that a separate MobHealth AddOn was detected. If so please remove it, or at least disable it. You will find that it is no longer needed, because MobInfo-2 is a full featured and fully compatible replacement. 
+
+To actually see MobInfo do something you must now go and kill Mobs. While killing Mobs you will see their health appear in the target frame and after killing and looting the Mobs you will see Mob informaton appear in the tooltip for the Mob. 
+
+
+*******************************************
+*** How to Backup your MobInfo database ***
+*******************************************
+It is very IMPORTANT to make occasional (even better: regular) backups of your MobInfo database. I have received several reports of users where due to whatever likely or unlikely incident the original MobInfo database got lost or erased or erased or currupted. It is unlikely and happens only very rarely, but when it happens your only chance to recover is to have a backup of the MobInfo database.
+
+The entire MobInfo database is contained within this onr file:
+   World of Warcraft\WTF\Account\<your_account_name>\SavedVariables\MobInfo2.lua
+
+First of all please logout of WoW. This automagically saves all current AddOn data to disk. Then make a copy of the database file (the one specified above) to a save location. To restore the backed up data simply copy the backup file back to the original location.
+
+Side note: this is also the file that you must pass on if you want to give your MobInfo database to someone else. Which of course means it is also the file you receive when someone else gives you their MobInfo database.
 
 
 **********************************************
 *** IMPORT of an External MobInfo Database ***
 **********************************************
-
 MobInfo can import externally supplied MobInfo databases. This can be a database from a friend of yours or a database that you have downloaded somewhere. WARNING : the database that you import MUST be from someone who uses exactly the same WoW localization as you do (ie. the same WoW client language). Importing a MobInfo database rom someone using a different WoW language will NOT work and might destroy your own database.
 
-First of all before importing data you should make a backup of your own database. It never hurts to be able to restore your original data in case you are unhappy with the import result. The entire MobInfo database is contained within this file:
-  \World of Warcraft\WTF\Account\<your_account_name>\SavedVariables\MobInfo2.lua
-
-Make a copy of that exact file to a save location. This is also the file that you must pass on if you want to give your MobInfo database to someone else. Which of course means it is also the file you receive when someone else gives you his MobInfo database.
+First of all before importing data you should make a backup of your own database. This is explained above in the chapter "How to Backup your MobInfo database". It never hurts to be able to restore your original data in case you are unhappy with the import result. 
 
 Here are the detailed import instructions:
 
@@ -100,20 +114,19 @@ TIP2 : You can also use this Import feature to import databases of the "MobHealt
 *****************************************
 ***  Conversion of DropRate Database  ***
 *****************************************
-
 The integrated DropRate converter can convert the contents of a DropRate database into MobInfo database entries. Yet in order for the converter to work an additional item database must be installed. THIS IS ABSOLUTELY MANDATORY !
 
 Right now the DropRate conversion supports the following item database tools: ItemSync (from Derkyle), LootLink and LootLink Enhanced (from Telo and Brodrick) and KS_Items (from Kaelten). You MUST have one of these AddOns installed and you MUST have a sufficiently large database. Why is this so important ? Because DropRate recorded only the item names, which is highly inefficient. All modern tools use instead mainly the item ID code. Yet name to code conversion is tricky, because the WoW client does not support this. Instead an item database is required that knows item names and that can convert a given item name into an item ID code. The AddOns that MobInfo currently supports all offer this feature.
 
-Right now Using LootLink is recommended for the conversion because AddOns sites like "http://ui.worldofwar.net" host huge downloadable LootLink item databases that ensure a high conversion success rate. After successful conversion LootLink (or any other item database tool) can be uninstalled, if you dont want to keep it.
+Using LootLink is recommended for the conversion because AddOns sites like "http://ui.worldofwar.net" host huge downloadable LootLink item databases that ensure a high conversion success rate. After successful conversion LootLink (or any other item database tool) can be uninstalled, if you dont want to keep it.
 
 Note that whenever the item database AddOn does not know an item from the DropRate database this item can NOT be converted into the MobInfo database. Therefore Mobs with unknown items can only be partially converted. The unknown items will be missing from the Mobs when looking at their MobInfo data.
 
 Here is how to make the conversion:
 
-1) You must have the following AddOns installed and active: MobInfo, DropRate, and either ItemSync or KC_Items. I'd like to mention that I made all my tests with ItemSync and it worked very well.
+1) You must have the following AddOns installed and active: MobInfo, DropRate, and either ItemSync, LootLink or KC_Items. I'd like to mention that I made all my tests with ItemSync and it worked very well.
 
-2) Backup your MobInfo database as explained in the "IMPORT" chapter. Similarely backup your DropRate database. The conversion will modify both databases ! Therefore it is very important to have backups of the originals so that you can go back to the state before the conversion, in case you encounter a problem, or in case you are not happy with the result
+2) Backup your MobInfo database as explained in the "How to Backup your MobInfo database" chapter. Similarely backup your DropRate database. The conversion will modify both databases ! Therefore it is very important to have backups of the originals so that you can go back to the state before the conversion, in case you encounter a problem, or in case you are not happy with the result
 
 3) To start the conversion enter "/mi2 convertDropRate" at the chat prompt. The conversion result will appear in the standard chat log window.
 
@@ -140,7 +153,7 @@ NOTE: During normal game play you should NEVER (!) have both DropRate and MobInf
 ******************************************************
 ** Where do the health values come from ?
 ** Why do max health values change so much at first ?
-
+******************************************************
 WoW itself does not allow AddOns to see the numeric health value of a Mob or other players. Instead WoW reports only a percentage value. To obtain an absolute health value this value must be calculated, or more correctly approximated. Thats what MobInfo does. In order to do this you must fight the creature. During the fight the damage you do is reported as actual damage points. The current health of the Mob is reported as percentage values. What MobInfo does is add up the damage numbers and calculate the corresponding difference in health percentage. The result is the number of points-per-percent (PPP) for the Mob. PPP times 100 thus is the maximum health value for the Mob. PPP allows calculating the numeric health value of a Mob from the Mobs health percentage.
 
 The data collected during one fight is not sufficient to get a good reliable PPP value. It needs accumulation of the data for at least 5 to 10 fights to get a reliable stable PPP value and thus a reliable and stable max health value for the Mob. In fact MobInfo will accumulate the data for 100 fights to obtain the best possible health approximation for a Mob. If you do not like to see a changing maximum health value for a Mob during a fight you can use the MobInfo obtion "Show stable Health Max". The health max will only get updated in between fights when activating this.
@@ -149,7 +162,7 @@ The method described above for approximating a Mobs health was first developed b
 
 ******************************************************************
 ** How do I change tooltip position or tooltip popup behaviour ?
-
+******************************************************************
 MobInfo only adds information to the tooltip, but it does not modify where or how the tooltip appears. To change this there are a large number of real good tooltip controll AddOns available. I can't list them all here, but some of the better and more popular ones are: TipBuddy (http://ui.worldofwar.net/ui.php?id=607), AF Tooltip Extreme (http://ui.worldofwar.net/ui.php?id=2416), or TooltipsKhaos (part of Cosmos compilation: http://www.cosmosui.org/).
 
 
@@ -160,110 +173,53 @@ MobInfo only adds information to the tooltip, but it does not modify where or ho
 ***-----------------------------------------------***
 ***-----------------------------------------------***
 
-ver 2.97
-  - updated to comply with newest WoW version 1.11
-  - show items on search options page in correct item color
-  - search options page again shows result list size
-  - fixed bug in search for Mobs that drop a certain item
+3.12
+  - this should really fix the NIL bug in battlegrounds
 
-2.96
-  - new feature: store health value obtained through Beast Lore in health database
-  - new feature: added chinese translation submitted by Andyca Chiou
-  - fixed nil error for items with legendary and artifact rarity
+3.11
+  - fixed nil bug that occurred in battlegrounds
+  - show temporary mob immunities (eg. spell based) as "(partial)"
 
-2.95
-  - bugfix release : fixes wrong max health display
+3.10
+  - new feature record and show if monster attempts to run when low on health
+  - improved zone handling: no more bugged zones after WoW update
+  - fixed loot counter problem with skinning item also being normal loot
+  - added "pairs()" to loops for BC compatibility
+  - fixed bug in item tooltip "Dropped By" percentages
 
-2.94
-  - huge update of MobInfo vendor sell price table (over 1000 new prices)
-  - DropRate conversion now supports LootLink databases
-  - fixed: DropRate conversion nil bug "Mobinfo2.lua Line: 383"
-  - fixed bug where health was displayed wrong after using "BeastLore" on Mob
+3.05
+  - fixed: in Combined Mode show correct zone of mouseover Mob
+  - fixed: record kills for mobs killed by pet if they give XP
+  - updated Chinese localization (Many Thanks to Andyca Chiou)
 
-2.93
-  - new feature: implemented DropRate database converter from NakorNH
-  - bugfix: correctly import locations for mobs in instances
-  - added new items (loot from Silithus) to MobInfo item price table
-  - several new skinning loot items added to skinning loot detection table
+3.04
+  - fixed: correctly detect XP when not rested
+  - updated Spanish localization (many thanks to AlbertQ)
+  - removed some unneeded chat commands
 
-2.92
-  - new feature: you can choose to import only unknown (ie. new) Mobs
-  - improved item colors in Mob tooltip for better readability
-  - fixed all health/mana updating issues for unit frame and tooltip
-  - fixed max health not increasing correctly for group member targets
+3.03
+  - bugfix: do not record money drop in item list
+  - more updates to Spanish and Chniese localizations
 
-2.91
-  - new feature: importing of externally supplied MobInfo databases
-  - new feature: option to delete all Mobs shown in search result
-  - added Turtle Scales to skinning loot detection table
-  - show all "green hills of Strangle" pages on one tooltip line
-  - item list on search page: show all items if item name field is empty
-  - fixed: mob name search errors on special chars
-  - fixed: correct independant show/hide of basic loot items
+3.02
+  - updated Chinese localization files (Many Thanks to Andyca Chiou)
+  - Spanish localization updated (Many Thanks to FILI)
+  - improved spell name to spell school conversion
+  - added automatic detection of Spanish localisation
+  - added a check to prevent a "nil" error on line 145
+  - fixed bug where kills where shown as 0
+  - fixed: HP missing in combined tooltip mode
+  - fixed nil bug in chinese localisation
 
-2.90
-  - added separate tooltip option for cloth and skinning loot
-  - show drop percentages for items in Mob tooltip
-  - calculate skinning loot percantage based on skinned counter
-  - rearranged tooltips options page
-  - new skinning loot support for Shiny Fish Scales and Red Whelp Scales
-
-2.89
-  - reinserted missing spaces in tooltip health
-  - abbreviate long tooltip item names instead of using 2 lines
-  - fixed to correctly call original GameTooltip:OnShow()
-
-2.88
-  - fixed ItemSync support to behave properly
-  - fix for stack overflow caused by CastParty AddOn
-  - internal event handling improvements
-
-2.87
-  - bugfix for NIL bug "MI2_Events.lua:100"
-
-2.86
-  - fixed to support newest version 12 of ItemSync
-  - fixed health updating during combat within Mob tooltip
-  - improved and extended Spanish localization (thanks to Pyrgus Malvae)
-  - fixed: show correct health updates for group member targets
-
-2.85
-  - fixed Spanish localization: should work now
-
-2.84
-  - fixed incorrect counting of item quantities
-    (special thanks to Nakor for finding all those tricky item bugs)
-  - basic spanish localization for MobInfo (thanks to Pyrgus Malvae)
-
-2.83
-  - feature: added keybinding for MobInfo
-  - feature: always show mana/rage/energy value if available
-  - bugfix: incorrect health percentage for party members
-
-2.82
-  - bugfix: not counting skinning loot correctly
-  - bugfix: quest items getting counted in quality overview
-  - bugfix: health not updating when Mob health itself
-  - updated french localisation (thanks to Sasmira)
-
-2.81
-  - drastically improved French translation (many thanks to Sasmira!)
-  - fixed NIL bug for "Mobinfo2.lua:1432"
-  - improved MI2_Browser data import and error checking
-
-2.80
-  - updated version number for WoW 1.10 compatibility
-  - new feature separate "skinned" counter
-  - new feature: mob location recording
-  - addded mob location to tooltip and options
-  - automatic conversion of MI2-Browser location data
-  - sort "Dropped By" list also by reliability of percentage
-  - reduced database size by storing char names in separate table
-  - combined basic mob data with quality overview data
-  - bugfix: empty loot counting should now always work
-  - bugfix: improved health calculation accuracy
-  - bugfix: do not count quest items in quality overview
-  - improved compatibility with TipBuddy 2.10 Compact Mode
+3.01
+  - implemented Mob resistances and immunities tracking
+  - options dialog extended for resistances tracking
+  - database format extended for storing resist data
+  - record XP as part of char specific data
+  - extensive rewrite of event handler code to improve event performance
+  - Mob tooltip data caching to improve tooltip performance
+  - added support for 6 new skinning loot items
+  - store and check WoW client language (ie. locale) within DB
 
 
 (for previous version info or any questions regarding MobInfo-2 please visit http://www.dizzarian.com/forums/viewforum.php?f=16)

@@ -53,7 +53,7 @@ end  -- of MI2_SetHealthOptionsState()
 -- data structure "MobInfoConfig".
 -----------------------------------------------------------------------------
 function MI2_UpdateOptions()
-	for index, value in MI2_OPTIONS do
+	for index, value in pairs(MI2_OPTIONS) do
 		local option = string.sub( index, 8 )
 		--DEFAULT_CHAT_FRAME:AddMessage( "MI_DBG: index="..index..", cmnd="..value.cmnd..", opt="..option )
 		if  MobInfoConfig[option]  then
@@ -101,14 +101,14 @@ function MI2_OptionsFrameOnShow()
 end  -- MI2_OptionsFrameOnShow()
 
 
-function miConfig_OnMouseDown(arg1)
+function miConfig_OnMouseDown()
 	if (arg1 == "LeftButton") then
 		frmMIConfig:StartMoving()
 	end
 end
 
 
-function miConfig_OnMouseUp(arg1)
+function miConfig_OnMouseUp()
 	if (arg1 == "LeftButton") then
 		frmMIConfig:StopMovingOrSizing()
 	end
@@ -243,15 +243,15 @@ function MI2_DbOptionsFrameOnShow()
 	local mobDbSize, healthDbSize, playerDbSize, itemDbSize = 0, 0, 0, 0
 
 	-- count and diplay size of MobInfo database
-	for index in MobInfoDB do  mobDbSize = mobDbSize + 1  end
+	for index in pairs(MobInfoDB) do  mobDbSize = mobDbSize + 1  end
 	MI2_TxtMobDbSize:SetText( MI_TXT_MOB_DB_SIZE..mifontWhite..(mobDbSize-1) )
 
 	-- count and diplay size of MobHealth database
-	for index in MobHealthDB do  healthDbSize = healthDbSize + 1  end
+	for index in pairs(MobHealthDB) do  healthDbSize = healthDbSize + 1  end
 	MI2_TxtHealthDbSize:SetText( MI_TXT_HEALTH_DB_SIZE..mifontWhite..healthDbSize )
 
 	-- count and diplay size of MobHealthPlayer database
-	for index in MobHealthPlayerDB do  playerDbSize = playerDbSize + 1  end
+	for index in pairs(MobHealthPlayerDB) do  playerDbSize = playerDbSize + 1  end
 	MI2_TxtPlayerDbSize:SetText( MI_TXT_PLAYER_DB_SIZE..mifontWhite..playerDbSize )
 
 	-- count and diplay size of MI2_ItemNameTable database
@@ -271,16 +271,20 @@ function MI2_DbOptionsFrameOnShow()
 	if MI2_Import_Status then
 		if MobInfoConfig.ImportSignature == MI2_Import_Signature then
 			MI2_OptImportMobData:Disable()
-			MI2_TxtImportStatus:SetText( "Status: <data already imported ("..MI2_Import_Status..")>" )
+			MI2_TxtImportStatus:SetText( MI_TXT_STATUS_ALREADY.."("..MI2_Import_Status..")>" )
 		elseif MI2_Import_Status == "BADVER" then
 			MI2_OptImportMobData:Disable()
-			MI2_TxtImportStatus:SetText( "Status: <import database too old>" )
+			MI2_TxtImportStatus:SetText( MI_TXT_STATUS_OLD )
+		elseif MI2_Import_Status == "BADLOC" then
+			MI2_OptImportMobData:Disable()
+			MI2_TxtImportStatus:SetText( MI_TXT_STATUS_WRONG )
 		else
 			MI2_OptImportMobData:Enable()
-			MI2_TxtImportStatus:SetText( "Status: "..MI2_Import_Status.." available for import" )
+			MI2_TxtImportStatus:SetText( MI_TXT_STATUS..MI2_Import_Status..MI_TXT_STATUS_AVAILABLE )
 		end
 	else
 		MI2_OptImportMobData:Disable()
-		MI2_TxtImportStatus:SetText( "Status: <no import data>" )
+		MI2_TxtImportStatus:SetText( MI_TXT_STATUS_NOIMPORT )
 	end
 end  -- MI2_DbOptionsFrameOnShow()
+

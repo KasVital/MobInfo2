@@ -2,7 +2,7 @@
 -- MobInfo2.lua
 --
 -- Main module of MobInfo-2 AddOn
--- Version:  2.97
+miVersionNo = ' 3.12'
 --
 -- MobInfo-2 is a World of Warcraft AddOn that provides you with useful
 -- additional information about Mobs (ie. opponents/monsters). It adds
@@ -20,48 +20,48 @@
 -- global vars
 MI2_Debug = 0  -- 0=no debug info, 1=minimal debug info, 2=extensive debug info, 3=more extensive+event info
 MI2_DebugItems = 0  -- 0=no item debug info, 1=show item ID and item value in tooltip
-MI2_DB_VERSION = 6
+MI2_DebugEvents = 0  -- 0=no item event info, 1=show decoded events, 2=show all incoming events
+
+MI2_DB_VERSION = 8
 MI2_IMPORT_DB_VERSION = 6
 
--- default initialization for all MobInfo database tables
--- this automatically gets overwritten by the database contents loaded from file
-MobInfoDB		= { ["DatabaseVersion:0"] = { ver = MI2_DB_VERSION } }
-MI2_CharTable	= { charCount = 0 }
-MI2_ZoneTable	= { cnt = 0 }
-MI2_ItemNameTable = {}
-MobHealthPlayerDB = {}
-MobHealthDB		= {	}
-
-local MI2_CurrentTargets = {}
-local MI2_RecentCorpses = {}
+local MI2_RecentLoots, MI2_MobCache, MI2_MobCacheIdx, MI2_XRefItemTable
 local MI2_NewCorpseIdx = 0
 local MI2_CurrentCorpseIndex = nil
-local MI2_LootFrameOpen = false
+local MI2_RecentLoots = {}
+local MI2_SpellToSchool = {}
+local MI2_CACHE_SIZE = 30
 
 -- skinning loot table using localization independant item IDs:
 --    Ruined Leather Scraps, Light Leather, Medium Leather, Heavy Leather, Thick Leather, Rugged Leather
---    Chimera Leather, Devilsaur Leather, Frostsaber Leather, Warbear Leather,
+--    Chimera Leather, Devilsaur Leather, Frostsaber Leather, Warbear Leather, Core Leather, Thin Kodo Leather
 --    Light Hide, Medium Hide, Heavy Hide, Thick Hide, Rugged Hide, Shadowcat Hide, Thick Wolfhide
---    Scorpid Scale, Shiny Fish Scales, Red Whelp Scales, Turtle Scales, Black Whelp Scales, Brilliant Chromatic Scale
+--    Scorpid Scale, Red Whelp Scales, Turtle Scales, Black Whelp Scales, Brilliant Chromatic Scale
 --    Black Dragonscale, Blue Dragonscale, Red Dragonscale, Green Dragonscale, Worn Dragonscale, Heavy Scorpid Scale
+--    deviate scale, perfect deviate scale, green whelp scale, worn dragonscale
+--
+-- removed "Shiny Fish Scales" ([17057]=1,) because its also normal loot
+--
 local miSkinLoot = { [2934]=1, [2318]=1, [2319]=1, [4234]=1, [4304]=1, [8170]=1, 
-                    [15423]=1,[15417]=1,[15422]=1,[15419]=1,
+                    [15423]=1,[15417]=1,[15422]=1,[15419]=1,[17012]=1, [5082]=1,
                       [783]=1, [4232]=1, [4235]=1, [8169]=1, [8171]=1, [7428]=1, [8368]=1,
-                     [8154]=1,[17057]=1, [7287]=1, [8167]=1, [7286]=1,[12607]=1,
-                    [15416]=1,[15415]=1,[15414]=1,[15412]=1, [8165]=1,[15408]=1, }
+                     [8154]=1,[7287]=1, [8167]=1, [7286]=1,[12607]=1,
+                    [15416]=1,[15415]=1,[15414]=1,[15412]=1, [8165]=1,[15408]=1,
+                     [6470]=1, [6471]=1, [7392]=1, [8165]=1,  }
 
 -- cloth loot table using localization independant item IDs
 -- Linen Cloth, Wool Cloth, Silk Cloth, Mageweave Cloth, Felcloth, Runecloth, Mooncloth
 local miClothLoot = { [2589]=1, [2592]=1, [4306]=1, [4338]=1, [14256]=1, [14047]=1, [14342]=1 };
 
-local MI2_ItemCollapseList = { [2725]=2725, [2728]=2725, [2730]=2725, [2732]=2725, 
-                               [2734]=2725, [2735]=2725, [2738]=2725, [2740]=2725,[2742]=2725,
-                               [2745]=2725, [2748]=2725, [2749]=2725, [2750]=2725, [2751]=2725 }
+local MI2_ItemCollapseList = { [2725]=0, [2728]=0, [2730]=0, [2732]=0, 
+                               [2734]=0, [2735]=0, [2738]=0, [2740]=0, [2742]=0,
+                               [2745]=0, [2748]=0, [2749]=0, [2750]=0, [2751]=0 }
 
 -- global MobInfo color constansts
 mifontBlue = "|cff0000ff"
 mifontItemBlue = "|cff2060ff"
 mifontLightBlue = "|cff00e0ff"
+mifontLightGreen = "|cff60ff60"
 mifontGreen = "|cff00ff00"
 mifontRed = "|cffff0000"
 mifontLightRed = "|cffff8080"
@@ -146,15 +146,51 @@ MI2_QualityColor = { [1]=mifontGray, [2]=mifontWhite, [3]=mifontGreen, [4]=mifon
 --    end
 -----------------------------------------------------------------------------
 function MI2_GetMobData( mobName, mobLevel, unitId )
+	if not mobName or not mobLevel then return end
+
 	local mobData = {}
 	local mobIndex = mobName..":"..mobLevel
 
+	-- decode unit specific mob data that is not recorded in mob database
+	MI2_GetUnitBasedMobData( mobIndex, mobData, unitId, mobLevel )
+
+	-- access Mob database and decode the data
+	local mobInfo = MobInfoDB[mobIndex]
+	if  mobInfo then
+		MI2_GetMobDataFromMobInfo( mobInfo, mobData )
+	end
+
+	return mobData
+end -- MI2_GetMobData()
+
+
+-----------------------------------------------------------------------------
+-- MI2_GetMobDataFromMobInfo()
+--
+-- Extract all data describing a specific mob from a given mob database
+-- record (called "mobInfo"). The mobInfo data is in a compressed format
+-- that requires decoding to make it usable.
+-----------------------------------------------------------------------------
+function MI2_GetMobDataFromMobInfo( mobInfo, mobData )
+	MI2_DecodeBasicMobData( mobInfo, mobData )
+	MI2_DecodePlayerSpecificData( mobInfo, mobData, MI2_PlayerName )
+	MI2_DecodeQualityOverview( mobInfo, mobData )
+	MI2_DecodeMobLocation( mobInfo, mobData )
+	MI2_DecodeItemList( mobInfo, mobData )
+	MI2_DecodeResists( mobInfo, mobData )
+end -- MI2_GetMobDataFromMobInfo()
+
+
+-----------------------------------------------------------------------------
+-- MI2_GetUnitBasedMobData()
+--
+-- Obtain and store all unit specific mob data.
+-----------------------------------------------------------------------------
+function MI2_GetUnitBasedMobData( mobIndex, mobData, unitId, mobLevel )
     -- get mobs PPP and calculate max health
 	local mobPPP = MobHealth_PPP(mobIndex)
 	if mobPPP <= 0 then mobPPP = 1 end
 	mobData.healthMax = floor(mobPPP * 100 + 0.5)
-
-	if MI2_Debug > 2 then chattext( "M2DBG: MI2_GetMobData: name=["..mobName.."], level="..mobLevel..", exists: "..tostring(MobInfoDB[mobIndex] ~= nil) ) end
 
 	-- obtain unit specific values if unitId is given
 	if unitId then
@@ -168,35 +204,42 @@ function MI2_GetMobData( mobName, mobLevel, unitId )
 		mobData.manaMax = UnitManaMax( unitId )
 	end
 
-	-- decode basic mob info
-	-- exit here if mob does not exist in DB, set color only if mob exists
-	local mobInfo = MobInfoDB[mobIndex]
-	if  not mobInfo then return mobData end
 	mobData.color = GetDifficultyColor( mobLevel )
-
-	MI2_GetMobDataFromMobInfo( mobInfo, mobData )
-
-	return mobData
-end -- MI2_GetMobData()
+end -- MI2_GetUnitBasedMobData()
 
 
 -----------------------------------------------------------------------------
--- MI2_GetMobDataFromMobInfo()
+-- MI2_FetchMobData()
 --
--- Extract all data describing a specific mob from a given mob database
--- record (called "mobInfo"). The various different fields within the
--- record get decoded and the resulting data is returned in a convenient
--- format that allows for easy further processing of the data. The return
--- format for the decoded data is called "mobData". The resulting "mobData"
--- structure is returned.
+-- Internal function for accessing a mobData record
+-- This function implements a caching mechanism for faster access
+-- to database records. The cache stores the last 30 Mob records.
+-- Data returned by "MI2_FetchMobData()" should NOT be modified because
+-- modifications are written back into the main database file.
 -----------------------------------------------------------------------------
-function MI2_GetMobDataFromMobInfo( mobInfo, mobData )
-	MI2_DecodeBasicMobData( mobInfo, mobData )
-	MI2_DecodePlayerSpecificData( mobInfo, mobData, MI2_PlayerName )
-	MI2_DecodeQualityOverview( mobInfo, mobData )
-	MI2_DecodeMobLocation( mobInfo, mobData )
-	MI2_DecodeItemList( mobInfo, mobData )
-end -- MI2_GetMobDataFromMobInfo()
+function MI2_FetchMobData( mobIndex )
+	local mobData = MI2_MobCache[mobIndex]
+	if mobIndex and not mobData then
+		local mobInfo = MobInfoDB[mobIndex]
+		mobData = { mobType=1, resists={} }
+		if mobInfo then
+			MI2_GetMobDataFromMobInfo( mobInfo, mobData )
+		end
+		MI2_MobCache[mobIndex] = mobData
+
+		local oldMob = MI2_MobCache[MI2_MobCacheIdx]
+		if oldMob then
+			MI2_MobCache[oldMob] = nil
+		end
+
+		MI2_MobCache[MI2_MobCacheIdx] = mobIndex
+		MI2_MobCacheIdx = MI2_MobCacheIdx + 1
+		if MI2_MobCacheIdx > MI2_CACHE_SIZE then
+			MI2_MobCacheIdx = 1
+		end
+	end
+	return mobData
+end -- MI2_FetchMobData()
 
 
 -----------------------------------------------------------------------------
@@ -228,6 +271,11 @@ function MI2_DecodeBasicMobData( mobInfo, mobData, mobIndex )
 		mobData.mobType		= tonumber(mt) or 1
 		mobData.skinCount	= tonumber(sc)
 	end
+
+	if mobData.mobType > 10 then
+		mobData.lowHpAction = floor(mobData.mobType / 10)
+		mobData.mobType = mobData.mobType - mobData.lowHpAction * 10
+	end
 end -- MI2_DecodeBasicMobData()
 
 
@@ -244,7 +292,7 @@ function MI2_DecodeMobLocation( mobInfo, mobData, mobIndex )
 	end
 
 	if mobInfo.ml then
-		local a,b,x1,y1,x2,y2,c,z = string.find( mobInfo.ml, "(%d*)/(%d*)/(%d*)/(%d*)/(%d*)/(%d*)")
+		local a,b,x1,y1,x2,y2,c,z,n = string.find( mobInfo.ml, "(%d*)/(%d*)/(%d*)/(%d*)/(%d*)/(%d*)")
 		mobData.location = {}
 		mobData.location.x1	= tonumber(x1)
 		mobData.location.y1	= tonumber(y1)
@@ -254,7 +302,7 @@ function MI2_DecodeMobLocation( mobInfo, mobData, mobIndex )
 		mobData.location.z	= (tonumber(z) or 0)
 		if not mobData.location.x1 or not mobData.location.x2 or 
 				not mobData.location.y1 or not mobData.location.y2 or 
-				not mobData.location.c or mobData.location.z == 0 then
+				mobData.location.z == 0 then
 			mobData.location = nil
 		end
 	end
@@ -300,13 +348,47 @@ function MI2_DecodePlayerSpecificData( mobInfo, mobData, playerName, mobIndex )
 	end
 
 	if mobInfo[playerName] then
-		local a,b,kl,mind,maxd,dps = string.find( mobInfo[playerName], "(%d*)/(%d*)/(%d*)/(%d*)")
+		local a,b,kl,mind,maxd,dps,xp = string.find( mobInfo[playerName], "(%d*)/(%d*)/(%d*)/(%d*)/*(%d*)")
 		mobData.kills		= tonumber(kl)
 		mobData.minDamage	= tonumber(mind)
 		mobData.maxDamage	= tonumber(maxd)
 		mobData.dps			= tonumber(dps)
+		if xp then
+			mobData.xp		= tonumber(xp)
+		end
 	end
 end
+
+
+-----------------------------------------------------------------------------
+-- MI2_DecodeResists()
+--
+-- Decode mob resistances and immunities info
+-- The location is encoded in the mob record entry "re".
+-- The decoded data is stored in the given "mobData" structure.
+-----------------------------------------------------------------------------
+function MI2_DecodeResists( mobInfo, mobData, mobIndex )
+	if mobIndex then
+		mobInfo = MobInfoDB[mobIndex]
+	end
+
+	if mobInfo.re then
+		local a,b,ar,arHits,fi,fiHits,fr,frHits,ho,hoHits,na,naHits,sh,shHits = string.find( mobInfo.re, "(%-?%d*),(%-?%d*)/(%-?%d*),(%-?%d*)/(%-?%d*),(%-?%d*)/(%-?%d*),(%-?%d*)/(%-?%d*),(%-?%d*)/(%-?%d*),(%-?%d*)")
+		mobData.resists = {}
+		mobData.resists.ar	= tonumber(ar)
+		mobData.resists.fi	= tonumber(fi)
+		mobData.resists.fr	= tonumber(fr)
+		mobData.resists.ho	= tonumber(ho)
+		mobData.resists.na	= tonumber(na)
+		mobData.resists.sh	= tonumber(sh)
+		mobData.resists.arHits	= tonumber(arHits)
+		mobData.resists.fiHits	= tonumber(fiHits)
+		mobData.resists.frHits	= tonumber(frHits)
+		mobData.resists.hoHits	= tonumber(hoHits)
+		mobData.resists.naHits	= tonumber(naHits)
+		mobData.resists.shHits	= tonumber(shHits)
+	end
+end -- MI2_DecodeMobLocation()
 
 
 -----------------------------------------------------------------------------
@@ -334,38 +416,89 @@ end -- MI2_DecodeItemList()
 
 
 -----------------------------------------------------------------------------
--- MI2_StoreMobData()
+-- MI2_StoreBasicInfo()
 --
--- Store the contents of a given "mobData" structure (ie. the data describing
--- a mob) in the mob database. The "mobData" must be compatible to what is
--- returned by the "MI2_GetMobData()" function.
+-- Store the mob basic info in the mob database. Basic info includes the
+-- mob loot quality overview counters.
 -----------------------------------------------------------------------------
-function MI2x_StoreMobData( mobData, mobName, mobLevel, playerName, mobIndex )
-	if not mobIndex then
-		mobIndex = mobName..":"..mobLevel
+local function MI2_StoreBasicInfo( mobIndex, mobData )
+	local mobInfo = MobInfoDB[mobIndex]
+	if not mobInfo then
+		mobInfo = {}
+		MobInfoDB[mobIndex] = mobInfo
 	end
 
-	-- create the mob basic info (".bi") string
-	if mobData.mobType == 1 then mobData.mobType = "" end
-	local basicInfo = (mobData.loots or "").."/"..(mobData.emptyLoots or "").."/"..(mobData.copper or "").."/"..(mobData.itemValue or "").."/"..
-	             (mobData.clothCount or "").."/"..(mobData.xp or "").."/"..(mobData.mobType or "").."/"..(mobData.skinCount or "")
+	local mobType = mobData.mobType or 1
+	if mobData.lowHpAction then
+		mobType = mobType + mobData.lowHpAction * 10
+	end
 
-	-- create the mob quality info (".qi") string
+	local basicInfo = (mobData.loots or "").."/"..(mobData.emptyLoots or "").."/"..(mobData.copper or "").."/"..(mobData.itemValue or "").."/"..(mobData.clothCount or "").."//"..(mobType or "").."/"..(mobData.skinCount or "")
+	if basicInfo ~= "///////" then
+		mobInfo.bi = basicInfo
+	end
+
 	local qualityInfo = (mobData.r1 or "").."/"..(mobData.r2 or "").."/"..(mobData.r3 or "").."/"..(mobData.r4 or "").."/"..(mobData.r5 or "")
+	if qualityInfo ~= "////" then
+		mobInfo.qi = qualityInfo
+	end
+end -- MI2_StoreBasicInfo()
 
-	-- create the mob player specific info, which is stored using the players name
-	local playerInfo = (mobData.kills or "").."/"..(mobData.minDamage or "").."/"..(mobData.maxDamage or "").."/"..(mobData.dps or "")
 
-	-- create the mob location data
-	-- note: a copy of this code can be found in MI2_AdaptImportLocation()
-	local loc = mobData.location or {}
-	local locationInfo = (loc.x1 or "").."/"..(loc.y1 or "").."/"..(loc.x2 or "").."/"..(loc.y2 or "").."/"..(loc.c or "").."/"..(loc.z or "")
+-----------------------------------------------------------------------------
+-- MI2_StoreLocation()
+--
+-- Store the mob location data in the mob database.
+-----------------------------------------------------------------------------
+function MI2_StoreLocation( mobIndex, loc )
+	local mobInfo = MobInfoDB[mobIndex]
+	if not mobInfo then
+		mobInfo = {}
+		MobInfoDB[mobIndex] = mobInfo
+	end
 
+	local locationInfo = (loc.x1 or "").."/"..(loc.y1 or "").."/"..(loc.x2 or "").."/"..(loc.y2 or "").."/"..(loc.c or "").."/"..(loc.z or "").."/"..(loc.n or "")
+	if locationInfo ~= "//////" then
+		mobInfo.ml = locationInfo
+	end
+end -- MI2_StoreLocation()
+
+
+-----------------------------------------------------------------------------
+-- MI2_StoreCharData()
+--
+-- Store the char specific mob data in the mob database.
+-----------------------------------------------------------------------------
+local function MI2_StoreCharData( mobIndex, mobData, playerName )
+	local mobInfo = MobInfoDB[mobIndex]
+	if not mobInfo then
+		mobInfo = {}
+		MobInfoDB[mobIndex] = mobInfo
+	end
+
+	local playerInfo = (mobData.kills or "").."/"..(mobData.minDamage or "").."/"..(mobData.maxDamage or "").."/"..(mobData.dps or "").."/"..(mobData.xp or "")
+	if playerInfo ~= "////" then
+		mobInfo[playerName] = playerInfo
+	end
+end -- MI2_StoreCharData()
+
+
+-----------------------------------------------------------------------------
+-- MI2_StoreLootItems()
+--
+-- Store a mobs loot items list in mob database.
+-----------------------------------------------------------------------------
+local function MI2_StoreLootItems( mobIndex, mobData )
+	local mobInfo = MobInfoDB[mobIndex]
+	if not mobInfo then
+		mobInfo = {}
+		MobInfoDB[mobIndex] = mobInfo
+	end
 	-- create loot item list string for database
 	local itemList = ""
 	if mobData.itemList then
 		local prefix = ""
-		for itemID, amount in mobData.itemList do
+		for itemID, amount in pairs(mobData.itemList) do
 			itemList = itemList..prefix..itemID
 			if amount > 1 then
 				itemList = itemList..":"..amount
@@ -373,38 +506,72 @@ function MI2x_StoreMobData( mobData, mobName, mobLevel, playerName, mobIndex )
 			prefix = "/"
 		end
 	end
-	
-	-- only enter non empty data into database record
-	local mobInfo = {}
-	local recordNotEmpty = false
-	if MobInfoConfig.SaveBasicInfo == 1 and basicInfo ~= "///////" then
-		mobInfo.bi = basicInfo
-		recordNotEmpty = true
-	end
-	if MobInfoConfig.SaveBasicInfo == 1 and qualityInfo ~= "////" then
-		mobInfo.qi = qualityInfo
-		recordNotEmpty = true
-	end
-	if MobInfoConfig.SaveCharData == 1 and playerInfo ~= "///" then
-		mobInfo[playerName] = playerInfo
-		recordNotEmpty = true
-	end
-	if MobInfoConfig.SaveItems == 1 and itemList ~= "" then
+
+	if itemList ~= "" then
 		mobInfo.il = itemList
-		recordNotEmpty = true
+	end
+end -- MI2_StoreLootItems()
+
+
+-----------------------------------------------------------------------------
+-- MI2_StoreResistData()
+--
+-- Store resist data for mob in mob database. Data will only be saved if
+-- resistances exist.
+-----------------------------------------------------------------------------
+function MI2_StoreResistData( mobIndex )
+	local mobData = MI2_FetchMobData( mobIndex )
+	resData = mobData.resists
+
+	-- store only if resistances exist
+	if resData.ar or resData.fi or resData.fr or resData.ho or resData.na or resData.sh then
+		local mobInfo = MobInfoDB[mobIndex]
+		if not mobInfo then
+			mobInfo = {}
+			MobInfoDB[mobIndex] = mobInfo
+		end
+		local resistString = 
+				(resData.ar or "")..","..(resData.arHits or "").."/"..
+				(resData.fi or "")..","..(resData.fiHits or "").."/"..
+				(resData.fr or "")..","..(resData.frHits or "").."/"..
+				(resData.ho or "")..","..(resData.hoHits or "").."/"..
+				(resData.na or "")..","..(resData.naHits or "").."/"..
+				(resData.sh or "")..","..(resData.shHits or "")
+		mobInfo.re = resistString
+	end
+end -- MI2_StoreResistData()
+
+
+-----------------------------------------------------------------------------
+-- MI2_StoreAllMobData()
+--
+-- Store all recorded data for a given mob in the mob database.
+-----------------------------------------------------------------------------
+function MI2_StoreAllMobData( mobData, mobName, mobLevel, playerName, mobIndex )
+	if not mobIndex then
+		mobIndex = mobName..":"..mobLevel
 	end
 
-	if MobInfoConfig.SaveBasicInfo == 1 and locationInfo ~= "/////" then
-		mobInfo.ml = locationInfo
-		recordNotEmpty = true
+	if MobInfoConfig.SaveBasicInfo == 1 then
+		MI2_StoreBasicInfo( mobIndex, mobData )
 	end
 
-	-- do not store empty records in database
-	if recordNotEmpty then
-		MobInfoDB[mobIndex] = mobInfo
+	if MobInfoConfig.SaveLocation == 1 and mobData.location then
+		MI2_StoreLocation( mobIndex, mobData.location )
 	end
 
-end -- MI2_StoreMobData()
+	if MobInfoConfig.SaveCharData == 1 then
+		MI2_StoreCharData( mobIndex, mobData, MI2_PlayerName )
+	end
+
+	if MobInfoConfig.SaveItems == 1 then
+		MI2_StoreLootItems( mobIndex, mobData )
+	end
+
+	if MobInfoConfig.SaveResist == 1 then
+		MI2_StoreResistData( mobIndex )
+	end
+end -- MI2_StoreAllMobData()
 
 
 -----------------------------------------------------------------------------
@@ -413,12 +580,12 @@ end -- MI2_StoreMobData()
 -- Remove all char specific data from the given Mob database record.
 -----------------------------------------------------------------------------
 function MI2_RemoveCharData( mobInfo )
-	for entryName, entryData in mobInfo do
+	for entryName, entryData in pairs(mobInfo) do
 		if entryName ~= "bi" and entryName ~= "qi" and entryName ~= "il" and entryName ~= "ml" and entryName ~= "ver" then
 			mobInfo[entryName] = nil
 		end
 	end
-end -- MI2_StoreMobData()
+end -- MI2_RemoveCharData()
 
 
 -----------------------------------------------------------------------------
@@ -429,46 +596,48 @@ end -- MI2_StoreMobData()
 function MI2_PrepareForImport()
 	local mobDbSize, healthDbSize, itemDbSize = 0, 0, 0
 
+	if not MobInfoDB then return end
+
 	--	external database version number check
 	local version = MobInfoDB["DatabaseVersion:0"].ver
-	if version and version < MI2_IMPORT_DB_VERSION then
+	if version and (version < MI2_IMPORT_DB_VERSION or version > MI2_DB_VERSION) then
 		MI2_Import_Status = "BADVER"
+		return
+	end
+
+	local locale = MobInfoDB["DatabaseVersion:0"].loc
+	if locale and locale ~= GetLocale() then
+		MI2_Import_Status = "BADLOC"
 		return
 	end
 
 	-- calculate Mob database size and import signature
 	local levelSum, nameSum = 0, 0
-	for index in MobInfoDB do  
+	for index in pairs(MobInfoDB) do  
 		mobDbSize = mobDbSize + 1
 		local mobName, mobLevel = MI2_GetIndexComponents( index )
 		levelSum = levelSum + mobLevel
 		nameSum = nameSum + string.len( mobName )
 	end
-	for index in MobHealthDB do  healthDbSize = healthDbSize + 1  end
-	for index in MI2_ItemNameTable do  itemDbSize = itemDbSize + 1  end
+	for index in pairs(MobHealthDB) do  healthDbSize = healthDbSize + 1  end
+	for index in pairs(MI2_ItemNameTable) do  itemDbSize = itemDbSize + 1  end
 	MI2_Import_Signature = mobDbSize.."_"..healthDbSize.."_"..itemDbSize.."_"..levelSum.."_"..nameSum
 
 	-- store copy of databases to be imported and calculate import status
 	MobInfoDB["DatabaseVersion:0"] = nil
 	MobInfoDB_Import = MobInfoDB
 	MI2_ItemNameTable_Import = MI2_ItemNameTable
-	MI2_ZoneTable_Import = MI2_ZoneTable
+	--MI2_ZoneTable_Import = MI2_ZoneTable
 	MobHealthDB_Import = MobHealthDB
 	if mobDbSize > 1 then
-		MI2_Import_Status = (mobDbSize-1).." Mobs"
+		MI2_Import_Status = (mobDbSize-1)..MI_TXT_MOBS
 	end
 	if healthDbSize > 0 then
 		if MI2_Import_Status then
 			MI2_Import_Status = MI2_Import_Status.." & " 
 		end
-		MI2_Import_Status = (MI2_Import_Status or "")..healthDbSize.." HP values"
+		MI2_Import_Status = (MI2_Import_Status or "")..healthDbSize..MI_TXT_HP_VALUES
 	end
-
-	MobInfoDB		= { ["DatabaseVersion:0"] = { ver = MI2_DB_VERSION } }
-	MI2_CharTable	= { charCount = 0 }
-	MI2_ZoneTable	= { cnt = 0 }
-	MI2_ItemNameTable = {}
-	MobHealthDB		= {	}
 end -- MI2_PrepareForImport()
 	
 -----------------------------------------------------------------------------
@@ -479,7 +648,6 @@ end -- MI2_PrepareForImport()
 function MI2_DeleteMobData( mobIndex, deleteHealth )
 	if mobIndex then
 		MobInfoDB[mobIndex] = nil
-		MI2_CurrentTargets[mobIndex] = nil
 		if deleteHealth then
 			MobHealthDB[mobIndex] = nil
 		end
@@ -492,15 +660,95 @@ end  -- MI2_DeleteMobData()
 
 
 -----------------------------------------------------------------------------
+-- MI2_DeleteItemFromDB()
+--
+-- Delete data for a specific Mob from database and current target table.
+-----------------------------------------------------------------------------
+function MI2_DeleteItemFromDB( itemID )
+	for mobIndex, mobInfo in pairs(MobInfoDB) do
+		local mobData = {}
+		MI2_DecodeItemList( mobInfo, mobData )
+		if mobData.itemList then
+			mobData.itemList[itemID] = nil
+			MI2_StoreLootItems( mobIndex, mobData )
+		end
+	end
+	MI2_ItemNameTable[itemID] = nil
+end  -- MI2_DeleteItemFromDB()
+
+
+-----------------------------------------------------------------------------
+-- MI2_DeleteAllMobData()
+--
+-- Set the global MobInfo player name. This is the abbreviated player name
+-- that is just an index into the MobInfo player name table, where the real
+-- name of the player is stored.
+-----------------------------------------------------------------------------
+function MI2_SetPlayerName()
+	local charName = GetCVar( "realmName" )..':'..UnitName("player")
+	if not MI2_CharTable[charName] then
+		MI2_CharTable.charCount = MI2_CharTable.charCount + 1
+		MI2_CharTable[charName] = "c"..MI2_CharTable.charCount
+	end
+	MI2_PlayerName = MI2_CharTable[charName]
+end -- MI2_SetPlayerName()
+
+
+-----------------------------------------------------------------------------
+-- MI2_ClearMobCache()
+--
+-- Empty oput the mob data cache
+-----------------------------------------------------------------------------
+function MI2_ClearMobCache()
+	MI2_MobCache = {}
+	MI2_MobCacheIdx = 1
+end -- MI2_ClearMobCache
+
+
+-----------------------------------------------------------------------------
+-- MI2_DeleteAllMobData()
+--
+-- Delete entire Mob database
+-----------------------------------------------------------------------------
+function MI2_DeleteAllMobData()
+	MobInfoDB = { ["DatabaseVersion:0"] = { ver = MI2_DB_VERSION, loc=GetLocale() } }
+	MI2_CharTable = { charCount = 0 }
+	MI2_ItemNameTable = {}
+	MI2_XRefItemTable = {}
+	MI2_SetPlayerName()
+	MI2_ClearMobCache()
+	MI2_ZoneTable = { }
+end  -- MI2_DeleteAllMobData()
+
+
+-----------------------------------------------------------------------------
 -- chattext()
 --
--- spits out msg to the chat channel. used in debuging
+-- spits out msg to the chat channel.
 -----------------------------------------------------------------------------
 function chattext(txt)
 	if( DEFAULT_CHAT_FRAME ) then
-		DEFAULT_CHAT_FRAME:AddMessage(txt)
+		DEFAULT_CHAT_FRAME:AddMessage( mifontLightBlue.."<MI2> "..txt)
 	end
 end -- chattext()
+
+
+-----------------------------------------------------------------------------
+-- midebug()
+--
+-- add debug message to chat channel, handle debug detail level if given
+-----------------------------------------------------------------------------
+function midebug( txt, dbgLevel )
+	if DEFAULT_CHAT_FRAME then
+		if dbgLevel then
+			if dbgLevel <= MI2_Debug then
+				DEFAULT_CHAT_FRAME:AddMessage( mifontLightBlue.."[MI2DBG] "..txt)
+			end
+		else
+			DEFAULT_CHAT_FRAME:AddMessage( mifontLightBlue.."<MI2DBG> "..txt)
+		end
+	end
+end -- midebug()
 
 
 -----------------------------------------------------------------------------
@@ -550,6 +798,8 @@ end -- chattext()
 	if  not MobInfoConfig.SaveLocation	then  MobInfoConfig.SaveLocation = 1	end
 	if  not MobInfoConfig.ShowClothSkin	then  MobInfoConfig.ShowClothSkin = 1	end
 	if  not MobInfoConfig.ImportOnlyNew	then  MobInfoConfig.ImportOnlyNew = 0	end
+	if  not MobInfoConfig.SaveResist	then  MobInfoConfig.SaveResist = 1		end
+	if  not MobInfoConfig.ShowResists	then  MobInfoConfig.ShowResists = 1		end
 
 	-- former option "HealthOff" has been renamed to "DisableHealth"
 	if  not MobInfoConfig.DisableHealth  then  
@@ -583,150 +833,194 @@ end  -- MI2_IndexComponents()
 
 
 -----------------------------------------------------------------------------
+-- MI2_UpdateDatabaseToV7()
+--
+-- Update MobInfo database to version V7. This function can handle most of
+-- the old versions and variants.
+-----------------------------------------------------------------------------
+local function MI2_UpdateDatabaseToV7()
+	-- loop through all Mobs in the database
+	for mobIndex, mobInfo in pairs(MobInfoDB) do
+		-- build new "basic info" entry from old separate entries
+		if (mobInfo.lt or mobInfo.el or mobInfo.cp or mobInfo.iv or mobInfo.cc) and not mobInfo.bi then
+			if mobInfo.lt and mobInfo.lt <= 0 then mobInfo.lt = nil end
+			if mobInfo.cp and mobInfo.cp <= 0 then mobInfo.cp = nil end
+			if mobInfo.iv and mobInfo.iv <= 0 then mobInfo.iv = nil end
+			if mobInfo.el and mobInfo.el <= 0 then mobInfo.el = nil end
+			if mobInfo.cc and mobInfo.cc <= 0 then mobInfo.cc = nil end
+			mobInfo.bi = (mobInfo.lt or "").."/"..(mobInfo.el or "").."/"..(mobInfo.cp or "").."/"..(mobInfo.iv or "").."/"..(mobInfo.cc or "").."//"..(mobInfo.mt or "").."/"
+		end
+		local s, slashCount = string.gsub( (mobInfo.bi or ""), "/", "@" )
+		if slashCount == 6 then mobInfo.bi = mobInfo.bi.."/"; slashCount = slashCount + 1 end
+		if mobInfo.bi == "////////" then mobInfo.bi = nil end
+		if mobInfo.bi and slashCount ~= 7 then mobInfo.bi = nil end
+
+		-- build new "quality info" entry from  old separate entries
+		if (mobInfo.r0 or mobInfo.r1 or mobInfo.r2 or mobInfo.r3 or mobInfo.r4) and not mobInfo.qi then
+			if mobInfo.r0 and mobInfo.r0 <= 0 then mobInfo.r0 = nil end
+			if mobInfo.r1 and mobInfo.r1 <= 0 then mobInfo.r1 = nil end
+			if mobInfo.r2 and mobInfo.r2 <= 0 then mobInfo.r2 = nil end
+			if mobInfo.r3 and mobInfo.r3 <= 0 then mobInfo.r3 = nil end
+			if mobInfo.r4 and mobInfo.r4 <= 0 then mobInfo.r4 = nil end
+			mobInfo.qi = (mobInfo.r0 or "").."/"..(mobInfo.r1 or "").."/"..(mobInfo.r2 or "").."/"..(mobInfo.r3 or "").."/"..(mobInfo.r4 or "")
+		end
+		if mobInfo.qi == "////" then  mobInfo.qi = nil  end
+
+		-- loop through all Mob database record entries, process char
+		-- specific data, remove invalid or empty entries
+		for entryName, entryData in pairs(mobInfo) do
+			if type(entryData) == "table" then
+				-- char specific data in table form found: convert it to new DB format
+				local dl = entryData.dl
+				local du = entryData.du
+				local dd = entryData.dd
+				if (dl or du) and not dd then
+					dd = dl.."/"..du.."/"..0
+				end
+				mobInfo[entryName] = (entryData.kl or "").."/"..(dd or "").."/"..(mobInfo.xp or "")
+			else
+				local isCharEntry = (type(entryData) == "string") and (string.find(entryName,":") ~= nil or MI2_CharTable[entryName]) and string.find(entryData,"/") ~= nil
+				isCharEntry = isCharEntry or type(entryData) == "string"
+				if isCharEntry then
+					if mobInfo[entryName] == "///" or mobInfo[entryName] == "///" then
+						mobInfo[entryName] = nil
+					end
+				elseif entryName ~= "bi" and entryName ~= "qi" and entryName ~= "il" and entryName ~= "ml" and entryName ~= "re" then
+					mobInfo[entryName] = nil
+				end
+			end
+		end -- for
+	end -- for
+
+	-- loop through all Mobs in the database and convert char name into char index
+	-- delete all empty mob records
+	for mobIndex, mobInfo in pairs(MobInfoDB) do
+		local entryCount = 0
+		for entryName, entryData in pairs(mobInfo) do
+			entryCount = entryCount + 1
+			local isCharEntry = (type(entryData) == "string") and string.find(entryName,":") ~= nil and string.find(entryData,"/") ~= nil
+			if isCharEntry then
+				if not MI2_CharTable[entryName] then
+					MI2_CharTable.charCount = MI2_CharTable.charCount + 1
+					MI2_CharTable[entryName] = "c"..MI2_CharTable.charCount
+				end
+				mobInfo[MI2_CharTable[entryName]] = entryData
+				mobInfo[entryName] = nil
+			end
+		end -- for
+		if entryCount == 0 then
+			MobInfoDB[mobIndex] = nil
+		end
+	end -- for
+end -- MI2_UpdateDatabaseToV7()
+
+
+-----------------------------------------------------------------------------
+-- MI2_UpdateDatabaseV7ToV8()
+--
+-- update database from V7 to V8 : add all zones to the MobInfo
+-- zone table and give them new zone IDs, index the zone table
+-- by ID instead of name
+-----------------------------------------------------------------------------
+local function MI2_UpdateDatabaseV7ToV8()
+	local zoneName, zoneId, mobIndex, mobInfo, newZoneTable
+
+	-- swap index with name in zone table
+	newZoneTable = {}
+	--MI2_ZoneTable.cnt = nil
+	for zoneName, zoneId in pairs(MI2_ZoneTable) do
+		newZoneTable[zoneId] = zoneName
+	end
+	MI2_ZoneTable = newZoneTable
+	--MI2_ZoneTable.cnt = 0
+
+	-- add names of ALL zones to zone table and store
+	-- the new zone ID in mob data
+	for mobIndex, mobInfo in pairs(MobInfoDB) do
+		local mobData = {}
+		MI2_DecodeMobLocation( mobInfo, mobData )
+		if mobData.location then
+			local zone = mobData.location.z
+			if zone < 100 then
+				local cont = mobData.location.c
+				zoneName = MI2_Zones[cont][zone]
+				--MI2_SetNewZone( zoneName )
+				mobData.location.z = MI2_CurZone
+				MI2_StoreLocation( mobIndex, mobData.location )
+			end
+		end
+	end
+end -- MI2_UpdateDatabaseV7ToV8()
+
+
+-----------------------------------------------------------------------------
 -- MI2_CleanupDatabases()
 --
 -- Cleanup for MobInfo database. This function corrects bugs in the
--- MobInfo database and applies some changes that have been made to
--- the format of the actual database entires.
---
--- With "DatabaseVersion" 3 the database storage format has changed completely,
--- which means that a complex conversion must be applied to convert the
--- old into the new database format.
---
--- increased DB version to 4 to enforce a cleanup run for everyone installing
--- the newest MobInfo release (2.64 and above)
+-- MobInfo database and applies changes that have been made to the
+-- format of the actual database entires.
 -----------------------------------------------------------------------------
 function MI2_CleanupDatabases()
---	local startTime = GetTime()
 	local mobIndex, mobInfo
+	local dbVerInfo = MobInfoDB["DatabaseVersion:0"] or { ver=0 }
+	local version = dbVerInfo.ver
 
-	if MobInfoDB.DatabaseVersion then MobInfoDB.DatabaseVersion = nil end
+	MobInfoDB["DatabaseVersion:0"] = nil
+	MobInfoDB.DatabaseVersion = nil
 
-	-- attempt to automatically fix invalid database entries where the index is bugged
-	for mobIndex, mobInfo in MobInfoDB do
+	-- delete DB entries with buggy index
+	for mobIndex in pairs(MobInfoDB) do
 		local mobName, mobLevel = MI2_GetIndexComponents( mobIndex )
 		if not mobName or not mobLevel or mobName == "" then
 			MobInfoDB[mobIndex] = nil
 		end
 	end
 
-	-- update database to the most recent version
-	-- this will convert old databases into the new DB format and will attempt
-	-- to fix any invalid database entries
-	if not MobInfoDB["DatabaseVersion:0"] or MobInfoDB["DatabaseVersion:0"].ver < MI2_DB_VERSION then
-		if MI2_Debug > 0 then chattext( "M2DBG: running DB cleanup for ver=[nil]" ) end
-		MobInfoDB["DatabaseVersion:0"] = nil
-
-		-- loop through all Mobs in the database
-		for mobIndex, mobInfo in MobInfoDB do
-			-- build new "basic info" entry from old separate entries
-			if (mobInfo.lt or mobInfo.el or mobInfo.cp or mobInfo.iv or mobInfo.cc or mobInfo.xp) and not mobInfo.bi then
-				if mobInfo.lt and mobInfo.lt <= 0 then mobInfo.lt = nil end
-				if mobInfo.cp and mobInfo.cp <= 0 then mobInfo.cp = nil end
-				if mobInfo.iv and mobInfo.iv <= 0 then mobInfo.iv = nil end
-				if mobInfo.el and mobInfo.el <= 0 then mobInfo.el = nil end
-				if mobInfo.cc and mobInfo.cc <= 0 then mobInfo.cc = nil end
-				mobInfo.bi = (mobInfo.lt or "").."/"..(mobInfo.el or "").."/"..(mobInfo.cp or "").."/"..(mobInfo.iv or "").."/"..(mobInfo.cc or "").."/"..(mobInfo.xp or "").."/"..(mobInfo.mt or "")
-			end
-			local s, slashCount = string.gsub( (mobInfo.bi or ""), "/", "@" )
-			if slashCount == 6 then mobInfo.bi = mobInfo.bi.."/"; slashCount = slashCount + 1 end
-			if mobInfo.bi == "///////" then mobInfo.bi = nil end
-			if mobInfo.bi and slashCount ~= 7 then mobInfo.bi = nil end
-
-			-- build new "quality info" entry from  old separate entries
-			if (mobInfo.r0 or mobInfo.r1 or mobInfo.r2 or mobInfo.r3 or mobInfo.r4) and not mobInfo.qi then
-				if mobInfo.r0 and mobInfo.r0 <= 0 then mobInfo.r0 = nil end
-				if mobInfo.r1 and mobInfo.r1 <= 0 then mobInfo.r1 = nil end
-				if mobInfo.r2 and mobInfo.r2 <= 0 then mobInfo.r2 = nil end
-				if mobInfo.r3 and mobInfo.r3 <= 0 then mobInfo.r3 = nil end
-				if mobInfo.r4 and mobInfo.r4 <= 0 then mobInfo.r4 = nil end
-				mobInfo.qi = (mobInfo.r0 or "").."/"..(mobInfo.r1 or "").."/"..(mobInfo.r2 or "").."/"..(mobInfo.r3 or "").."/"..(mobInfo.r4 or "")
-			end
-			if mobInfo.qi == "////" then  mobInfo.qi = nil  end
-
-			-- loop through all Mob database record entries
-			-- process char specific data and remove all invalid entries from database record
-			for entryName, entryData in mobInfo do
-				if type(entryData) == "table" then
-					-- char specific data in table form found: convert it to new DB format
-					local dl = entryData.dl
-					local du = entryData.du
-					local dd = entryData.dd
-					if (dl or du) and not dd then
-						dd = dl.."/"..du.."/"..0
-					end
-					mobInfo[entryName] = (entryData.kl or "").."/"..(dd or "")
-				else
-					local isCharEntry = type(entryData) == "string" and (string.find(entryName,":") ~= nil or MI2_CharTable[entryName]) and string.find(entryData,"/") ~= nil
-					isCharEntry = isCharEntry or type(entryData) == "string"
-					if isCharEntry then
-						if mobInfo[entryName] == "///" then
-							mobInfo[entryName] = nil
-						end
-					elseif entryName ~= "bi" and entryName ~= "qi" and entryName ~= "il" and entryName ~= "ml" then
-						mobInfo[entryName] = nil
-					end
-				end
-			end -- for
-		end -- for
-
-		-- loop through all Mobs in the database and convert char name into char index
-		-- delete all empty mob records
-		for mobIndex, mobInfo in MobInfoDB do
-			local entryCount = 0
-			for entryName, entryData in mobInfo do
-				entryCount = entryCount + 1
-				local isCharEntry = type(entryData) == "string" and string.find(entryName,":") ~= nil and string.find(entryData,"/") ~= nil
-				if isCharEntry then
-					if not MI2_CharTable[entryName] then
-						MI2_CharTable.charCount = MI2_CharTable.charCount + 1
-						MI2_CharTable[entryName] = "c"..MI2_CharTable.charCount
-					end
-					mobInfo[MI2_CharTable[entryName]] = entryData
-					mobInfo[entryName] = nil
-				end
-			end -- for
-			if entryCount == 0 then
-				MobInfoDB[mobIndex] = nil
-			end
-		end
-
-		MobInfoDB["DatabaseVersion:0"] = { ver = MI2_DB_VERSION }
+	-- update database to current version
+	if version  < 7 then
+		MI2_UpdateDatabaseToV7()
+	end
+	if version  < 8 then
+		MI2_UpdateDatabaseV7ToV8()
 	end
 
---	chattext( "<MobInfo> database conversion time = "..(GetTime()-startTime).." seconds" )
+	MobInfoDB["DatabaseVersion:0"] = { ver = MI2_DB_VERSION, loc=GetLocale() }
 end  -- MI2_CleanupDatabases()
 
 
 -----------------------------------------------------------------------------
--- MI2_ImportLocationsFromMI2B()
+-- MI2_SetNewZone()
 --
--- Import the Mob locations that have been recorded by the MI2_Browser
--- AddOn into the MobInfo2 Mob database. Only import correct location
--- data for Mobs that do not yet have a location.
+-- Set a new zone as the MI2 current zone. Add the zone to the MI2 zone
+-- name table if zone is unknown.
 -----------------------------------------------------------------------------
-function MI2_ImportLocationsFromMI2B()
-	-- import TipBuddy Mob location data into the MobInfo database
-	if MobInfoDB_B and not MobInfoDB_B.converted then
-		for idx, val in MobInfoDB_B do
-			if MobInfoDB[idx] and not MobInfoDB[idx].ml and val.loc and val.loc.l and val.loc.x and val.loc.y then
-				local x = floor( val.loc.x * 100.0 )
-				local y = floor( val.loc.y * 100.0 )
-				local _, _, continent, zone = string.find( (tostring(val.loc.l)), MI2B_LOCPATTERN )
-				if continent and zone and x > 0 and y > 0 then
-					local locationInfo = (x or "").."/"..(y or "").."/"..(x or "").."/"..(y or "").."/"..(continent or "").."/"..(zone or "")
-					MobInfoDB[idx].ml = locationInfo
-				end
-			end
+function MI2_SetNewZone( zoneName,  continent, zone)
+	if not zoneName or zoneName == "" then return end
+
+	-- find zone ID if zone is already known
+	local name, id, zoneId
+	for id, name in pairs(MI2_ZoneTable) do
+		if name == zoneName then
+			zoneId = id
+			break
 		end
-		MobInfoDB_B.converted = 1
 	end
-end
+
+	-- add unknown zone to table
+	if not zoneId then
+	--	MI2_ZoneTable.cnt = MI2_ZoneTable.cnt + 1
+		zoneId = continent*100+zone--200 + MI2_ZoneTable.cnt
+		MI2_ZoneTable[zoneId] = zoneName
+	end
+
+	MI2_CurZone = zone
+end -- MI2_SetNewZone()
+
 
 -----------------------------------------------------------------------------
 -- MI2_AddItemToXRefTable()
 --
--- build the cross reference table for fast item lookup
+-- update the cross reference table for fast item lookup
 -- The table is indexed by item name and lists all Mobs that drop the item
 -----------------------------------------------------------------------------
 local function MI2_AddItemToXRefTable( mobIndex, itemName, itemAmount )
@@ -736,8 +1030,6 @@ local function MI2_AddItemToXRefTable( mobIndex, itemName, itemAmount )
 
 	local oldAmount = MI2_XRefItemTable[itemName][mobIndex]
 	MI2_XRefItemTable[itemName][mobIndex] = (oldAmount or 0) + itemAmount
-
---chattext("DBG: XRefItemTable: item=["..itemName.."], mob=["..mobIndex.."], val="..MI2_XRefItemTable[itemName][mobIndex] )
 end -- MI2_AddItemToXRefTable()
 
 
@@ -749,12 +1041,14 @@ end -- MI2_AddItemToXRefTable()
 -- It is needed for quickly generating the "Dropped By" list in item tooltips.
 -----------------------------------------------------------------------------
 function MI2_BuildXRefItemTable()
+	local mobIndex, mobInfo
+
 	MI2_XRefItemTable = {}
-	for mobIndex, mobInfo in MobInfoDB do
+	for mobIndex, mobInfo in pairs(MobInfoDB) do
 		local mobData = {}
 		MI2_DecodeItemList( mobInfo, mobData )
 		if mobData.itemList then 
-			for itemID, amount in mobData.itemList do
+			for itemID, amount in pairs(mobData.itemList) do
 				local itemText = MI2_ItemNameTable[itemID]
 				if itemText then
 					itemText = string.sub( itemText, 1, -3 )
@@ -767,53 +1061,142 @@ end -- MI2_BuildXRefItemTable()
 
 
 -----------------------------------------------------------------------------
--- MI2_NewMobTarget()
+-- MI2_CombineLocations()
 --
--- Add a Mob to the list of current targets. MobInfo tracks all current
--- targets to collect data on the Mobs and for advanced kill counting.
+-- Combine the location area of a given Mob with a second (new) location.
+-- The "correctWrongZone" flag can be sued to force a correction if wrong
+-- zones in mobData.
 -----------------------------------------------------------------------------
-function MI2_NewMobTarget( index )
-	if  not MI2_CurrentTargets[index] then
-		MI2_CurrentTargets[index] = {}
-	end  
+local function MI2_CombineLocations( mobData, loc2, correctWrongZone )
+	local loc1 = mobData.location
+	if loc1 or loc2 then
+		if not loc1 or not loc1.z then
+			mobData.location = loc2
+		elseif loc2 then
+			if loc1.z ~= loc2.z or loc1.c ~= loc2.c then
+				if correctWrongZone then
+					mobData.location = loc2
+				end
+			else
+				if loc2.x1 < loc1.x1 then loc1.x1 = loc2.x1 end
+				if loc2.x2 > loc1.x2 then loc1.x2 = loc2.x2 end
+				if loc2.y1 < loc1.y1 then loc1.y1 = loc2.y1 end
+				if loc2.y2 > loc1.y2 then loc1.y2 = loc2.y2 end
+			end
+		end
+	end
+end -- MI2_CombineLocations
 
-	local mobData = MI2_CurrentTargets[index]
-	mobData.time = GetTime()
-	mobData.killed = nil
 
-	-- obtain and store mob type 
-	local mobType  = UnitClassification( "target" )
-	if mobType and mobType ~= "normal" then
-		if mobType == "rare" or mobType == "elite" then
+-----------------------------------------------------------------------------
+-- MI2_RecordLocationAndType()
+--
+-- Record the current player location as the Mob location, record the type
+-- of the mob (normal, elite, boss). This function is intended to be called
+-- when targetting a Mob.
+-----------------------------------------------------------------------------
+function MI2_RecordLocationAndType( mobIndex )
+	if MI2_MouseoverIndex == mobIndex then return end
+
+	local mobData = MI2_FetchMobData( mobIndex )
+
+	if MobInfoConfig.SaveLocation == 1 then
+		local x, y = GetPlayerMapPosition("player")
+		x = floor( x * 100.0 )
+		y = floor( y * 100.0 )
+		local cont=GetCurrentMapContinent()
+		local zon=GetCurrentMapZone()
+		local newLocation = { x1=x, x2=x, y1=y, y2=y, c=cont, z=zon}
+		midebug( MI_TXT_REC_LOC.."  ("..x.."/"..y.."),c="..cont..", z="..zon, 1 )
+		MI2_CombineLocations( mobData, newLocation, true )
+		MI2_StoreLocation( mobIndex, mobData.location )
+	end
+
+	if MobInfoConfig.SaveBasicInfo == 1 then
+		local mobType = UnitClassification("target")
+		if mobType == "normal" then
+		elseif mobType == "rare" or mobType == "elite" then
 			mobData.mobType = 2
-		else
+		elseif mobType == "rareelite" or mobType == "worldboss" then
 			mobData.mobType = 3
+		end
+		if mobData.mobType > 1 then
+			MI2_StoreBasicInfo( mobIndex, mobData )
+		end
+	end
+end -- MI2_RecordLocationAndType()
+
+
+-----------------------------------------------------------------------------
+-- MI2_RecordExtraMobType()
+--
+-- Record the current player location as the Mob location, record the type
+-- of the mob (normal, elite, boss). This function is intended to be called
+-- when targetting a Mob.
+-----------------------------------------------------------------------------
+function MI2_RecordLowHpAction( creature, action )
+	if MobInfoConfig.SaveBasicInfo == 1 and MI2_Target.mobIndex and MI2_Target.name == creature then
+		local mobData = MI2_FetchMobData( MI2_Target.mobIndex )
+		mobData.lowHpAction = action
+		MI2_StoreBasicInfo( MI2_Target.mobIndex, mobData )
+	end
+end -- MI2_RecordExtraMobType()
+
+
+-----------------------------------------------------------------------------
+-- MI2_RecordKill()
+--
+-- record data related to a mob kill
+-- attempt to find correct mob DB index based on situation and killed mobs
+-- name (kill msg gives only name, not level)
+-----------------------------------------------------------------------------
+function MI2_RecordKill( creatureName, xp )
+	-- try to find DB index for mob that was killed
+	local mobIndex
+	if MI2_Target.name == creatureName then
+		mobIndex = MI2_Target.mobIndex
+	elseif MI2_LastTargetIdx and string.find(MI2_LastTargetIdx, creatureName) then
+		mobIndex = MI2_LastTargetIdx
+	else
+		for i=1,MI2_CACHE_SIZE do
+			local idx = MI2_MobCache[i]
+			if idx and string.find(idx, creatureName) then
+				mobIndex = idx
+				break
+			end
 		end
 	end
 
-	return mobData
-end -- MI2_NewMobTarget()
+	if MobInfoConfig.SaveCharData == 1 and mobIndex then
+		local mobData = MI2_FetchMobData( mobIndex )
+		if xp then
+			mobData.xp = xp
+		end
+		if (xp and not mobData.killed) or not xp then
+			mobData.kills = (mobData.kills or 0) + 1
+			mobData.killed = 1
+		end
+		midebug( MI_TXT_REC_KILL_MOB.."="..mobIndex..", "..MI_TXT_REC_KILL_MOB_KILLS.."="..mobData.kills..", "..MI_TXT_REC_KILL_MOB_XP.."="..(xp or "nil"), 1 )
+		MI2_StoreCharData( mobIndex, mobData, MI2_PlayerName )
+	end
+end -- MI2_RecordKill()
 
 
 -----------------------------------------------------------------------------
 -- MI2_RecordDamage()
 --
--- record damage value for a mob
+-- record min/max damage value for mob
 -----------------------------------------------------------------------------
-function MI2_RecordDamage( index, damage )
-	local mobData = MI2_CurrentTargets[index]
-
-	if MI2_Debug > 1 then chattext( "M2DBG: damage reported: mob=["..index.."], dmg="..damage ) end
-
-	-- update minimum and/or maximum damage for mob
-	if mobData and damage > 0 then
+function MI2_RecordDamage( mobIndex, damage )
+	if damage > 0 then
+		local mobData = MI2_FetchMobData( mobIndex )
 		if not mobData.minDamage or mobData.minDamage <= 0 then
 			mobData.minDamage, mobData.maxDamage = damage, damage
 		elseif damage < mobData.minDamage then
-			if MI2_Debug > 0 then chattext( "M2DBG: recording new MIN dmg "..damage.." for ["..index.."] (old="..mobData.minDamage..")" ) end
+			midebug( MI_TXT_REC_NEW_MIN_DMG..damage..MI_TXT_REC_NEW_DMG_FOR.."["..mobIndex.."] ("..MI_TXT_REC_NEW_DMG_OLD.."="..mobData.minDamage..")", 1 )
 			mobData.minDamage = damage
 		elseif damage > mobData.maxDamage then
-			if MI2_Debug > 0 then chattext( "M2DBG: recording new MAX dmg "..damage.." for ["..index.."] (old="..mobData.maxDamage..")" ) end
+			midebug( MI_TXT_REC_NEW_MAX_DMG..damage..MI_TXT_REC_NEW_DMG_FOR.."["..mobIndex.."] ("..MI_TXT_REC_NEW_DMG_OLD.."="..mobData.maxDamage..")", 1 )
 			mobData.maxDamage = damage
 		end
 	end
@@ -826,97 +1209,17 @@ end -- MI2_RecordDamage()
 -- record a new dps (damage per second) value for a specific mob
 -- dps gets calculated from damage done within a given time
 -----------------------------------------------------------------------------
-function MI2_RecordDps( index, deltaTime, damage  )
-	local mobData = MI2_CurrentTargets[index]
-
+function MI2_RecordDps( mobIndex, deltaTime, damage  )
 	-- only store dps for fights longer then 4 seconds
-	if mobData and deltaTime > 4 then
-		-- calculate DPS value
+	if MobInfoConfig.SaveCharData == 1 and deltaTime > 4 then
+		local mobData = MI2_FetchMobData( mobIndex )
 		local newDps = damage / deltaTime
 		if not mobData.dps then mobData.dps = newDps end
 		mobData.dps = floor( ((2.0 * mobData.dps) + newDps) / 3.0 )
-
-		-- update the dd (damage data) entry for this mob
-		if MI2_Debug > 0 then chattext( "M2DBG: recording new dps: idx="..index..", new dps="..mobData.dps ) end
+		MI2_StoreCharData( mobIndex, mobData, MI2_PlayerName )
+		midebug( MI_TXT_REC_NEW_DPS.."="..mobIndex..", "..MI_TXT_NEW_DPS.."="..mobData.dps, 1 )
 	end
 end -- MI2_RecordDps()
-
-
------------------------------------------------------------------------------
--- MI2_RecordKill()
---
--- record a kill and optionally the xp you got for the kill for the given mob
------------------------------------------------------------------------------
-local function MI2_RecordKill( index, xp )
-	local mobData = MI2_CurrentTargets[index]
-
-	if mobData then
-		if not mobData.killed then
-			mobData.kills = (mobData.kills or 0) + 1
-		end
-		mobData.killed = 1
-		if xp > 0 then
-			mobData.xp = xp
-		end
-		mobData.time = GetTime()
-	end
-
-	if MI2_Debug > 0 then chattext( "M2DBG: recording kill "..(mobData.kills or "<nil>").." and XP "..xp.." for mob ["..index.."]" ) end
-end -- MI2_RecordKill()
-
-
------------------------------------------------------------------------------
--- MI2_RecordLocation()
---
--- record the current location of the player as the location of the Mob
--- he is fighting
------------------------------------------------------------------------------
-local function MI2_RecordLocation( index )
-	local mobData = MI2_CurrentTargets[index]
-
-	if mobData and not mobData.location then
-		local x, y = GetPlayerMapPosition("player")
-		x = floor( x * 100.0 )
-		y = floor( y * 100.0 )
-		mobData.location = { x1=x, x2=x, y1=y, y2=y, c=MI2_CurContinent, z=MI2_CurZone }
-	end
-end -- MI2_RecordLocation()
-
-
------------------------------------------------------------------------------
--- MI2_RecordLootData()
---
--- Record the data for one loot item. This function is called in turn for
--- each loot item in the loot window.
------------------------------------------------------------------------------
-local function MI2_RecordLootData( mobData, itemID, money, itemValue, quality, isSkinningLoot )
-	mobData.clothCount = (mobData.clothCount or 0) + (miClothLoot[itemID] or 0 )
-	mobData.copper = (mobData.copper or 0) + money
-	if isSkinningLoot then
-		mobData.skinCount = (mobData.skinCount or 0) + 1
-	else
-		-- count item value only for non skinning loot
-		mobData.itemValue = (mobData.itemValue or 0) + itemValue
-	end
-
-	-- decide whether item should be counted in quality overview
-	if itemValue < 1 and quality == 2 or isSkinningLoot then
-		quality = -1
-	end
-
-	-- record loot item quality (if enabled)
-	if quality == 1 then 
-		mobData.r1 = (mobData.r1 or 0) + 1
-	elseif quality == 2 then
-		mobData.r2 = (mobData.r2 or 0) + 1
-	elseif quality == 3 then
-		mobData.r3 = (mobData.r3 or 0) + 1
-	elseif quality == 4 then
-		mobData.r4 = (mobData.r4 or 0) + 1
-	elseif quality == 5 then
-		mobData.r5 = (mobData.r5 or 0) + 1
-	end
-end -- MI2_RecordLootData()
 
 
 -----------------------------------------------------------------------------
@@ -927,6 +1230,7 @@ end -- MI2_RecordLootData()
 -- mob (mobData1). The result is returned in "mobData1".
 -----------------------------------------------------------------------------
 function MI2_AddTwoMobs( mobData1, mobData2 )
+	-- add up basic mob data
 	mobData1.loots = (mobData1.loots or 0) + (mobData2.loots or 0)
 	mobData1.kills = (mobData1.kills or 0) + (mobData2.kills or 0)
 	mobData1.emptyLoots = (mobData1.emptyLoots or 0) + (mobData2.emptyLoots or 0)
@@ -940,32 +1244,11 @@ function MI2_AddTwoMobs( mobData1, mobData2 )
 	mobData1.r4 = (mobData1.r4 or 0) + (mobData2.r4 or 0)
 	mobData1.r5 = (mobData1.r5 or 0) + (mobData2.r5 or 0)
 	if mobData2.mobType then mobData1.mobType = mobData2.mobType end
-	if mobData2.xp then mobData1.xp = mobData2.xp end
+	if not mobData1.xp then mobData1.xp = mobData2.xp end
 
-	-- combine locations
-	if mobData1.location or mobData2.location then
-		if not mobData1.location then
-			mobData1.location = mobData2.location
-		elseif mobData2.location then
-			if mobData2.location.x1 < mobData1.location.x1 then
-				mobData1.location.x1 = mobData2.location.x1
-			end
-			if mobData2.location.x2 > mobData1.location.x2 then
-				mobData1.location.x2 = mobData2.location.x2
-			end
-			if mobData2.location.y1 < mobData1.location.y1 then
-				mobData1.location.y1 = mobData2.location.y1
-			end
-			if mobData2.location.y2 > mobData1.location.y2 then
-				mobData1.location.y2 = mobData2.location.y2
-			end
-			if mobData1.location.c == 0 then
-				mobData1.location.c = mobData2.location.c
-			end
-		end
-	end
+	MI2_CombineLocations( mobData1, mobData2.location )
 
-	-- combine DPS od two mobs
+	-- combine DPS
 	if not mobData1.dps then
 		mobData1.dps = mobData2.dps
 	else
@@ -973,6 +1256,23 @@ function MI2_AddTwoMobs( mobData1, mobData2 )
 			mobData1.dps = floor( ((2.0 * mobData1.dps) + mobData2.dps) / 3.0 )
 		end
 	end
+
+	-- combine resist data
+	local resdat1 = mobData1.resists or {}
+	local resdat2 = mobData2.resists or {}
+	resdat1.ar	= (resdat1.ar or 0) + (resdat2.ar or 0)
+	resdat1.fi	= (resdat1.fi or 0) + (resdat2.fi or 0)
+	resdat1.fr	= (resdat1.fr or 0) + (resdat2.fr or 0)
+	resdat1.ho	= (resdat1.ho or 0) + (resdat2.ho or 0)
+	resdat1.na	= (resdat1.na or 0) + (resdat2.na or 0)
+	resdat1.sh	= (resdat1.sh or 0) + (resdat2.sh or 0)
+	resdat1.arHits	= (resdat1.arHits or 0) + (resdat2.arHits or 0)
+	resdat1.fiHits	= (resdat1.fiHits or 0) + (resdat2.fiHits or 0)
+	resdat1.frHits	= (resdat1.frHits or 0) + (resdat2.frHits or 0)
+	resdat1.hoHits	= (resdat1.hoHits or 0) + (resdat2.hoHits or 0)
+	resdat1.naHits	= (resdat1.naHits or 0) + (resdat2.naHits or 0)
+	resdat1.shHits	= (resdat1.shHits or 0) + (resdat2.shHits or 0)
+	mobData1.resists = resdat1
 
 	-- combine minimum and maximum damage	
 	if (mobData2.minDamage or 99999) < (mobData1.minDamage or 99999) then
@@ -982,10 +1282,10 @@ function MI2_AddTwoMobs( mobData1, mobData2 )
 		mobData1.maxDamage = mobData2.maxDamage
 	end
 	
-	-- add loot item tables of the two mobs
+	-- add loot item tables
 	if mobData2.itemList then
 		if not mobData1.itemList then mobData1.itemList = {} end
-		for itemID, amount in mobData2.itemList do
+		for itemID, amount in pairs(mobData2.itemList) do
 			mobData1.itemList[itemID] = (mobData1.itemList[itemID] or 0) + mobData2.itemList[itemID]
 		end
 	end
@@ -1004,44 +1304,6 @@ function MI2_AddTwoMobs( mobData1, mobData2 )
 	if mobData1.r4 == 0 then mobData1.r4 = nil end
 	if mobData1.r5 == 0 then mobData1.r5 = nil end
 end  -- MI2_AddTwoMobs
-
-
------------------------------------------------------------------------------
--- MI2_ProcessTargetTable()
---
--- process the MobInfo target table
--- The target table collects all mob related data (except for health) during
--- a fight and when looting. This function transfers the data that has been
--- collected into the main mob database.
---
--- There are 2 criterias for detecting when the right time has come to
--- transfer a mob into the database. After storing a mob in the database
--- it is removed from the table of current targets:
---   * Looted : mobs that have been looted have been fully processed, their
---     data is complete and can thus be stored
---   * Timeout : mobs that have been in the table for over 20 seconds
---     and have not been killed in that time can be stored
---   * Timeout : mobs that have been killed and have not been looted within
---     the last 60 seconds
--- 
------------------------------------------------------------------------------
-function MI2_ProcessTargetTable()
-	for index, newMobData in MI2_CurrentTargets do
-		local deltaT = GetTime() - newMobData.time
-		if (newMobData.loots and newMobData.loots == newMobData.kills)
-				or (not newMobData.loots and newMobData.skinCount)
-				or (not newMobData.kills and deltaT > 30)
-				or deltaT > 60 then
-			if MI2_Debug > 1 then chattext( "M2DBG: entering mob ["..index.."] into database" ) end
-			local mobName, mobLevel = MI2_GetIndexComponents( index )
-			
-			local realMobData = MI2_GetMobData( mobName, mobLevel )
-			MI2_AddTwoMobs( realMobData, newMobData )
-			MI2x_StoreMobData( realMobData, mobName, mobLevel, MI2_PlayerName )
-			MI2_CurrentTargets[index] = nil
-		end
-	end
-end -- MI2_ProcessTargetTable
 
 
 -----------------------------------------------------------------------------
@@ -1120,37 +1382,36 @@ end -- lootName2Copper()
 -- Find the item value in either the Auctioneer database or in out own copy
 -- of the Auctioneer item value database or by asking KC_Items
 -----------------------------------------------------------------------------
-function MI2_FindItemValue( itemID, link )
-	local price
+function MI2_FindItemValue( itemID )
+	local price = 0
 	
 	-- check if KC_Items is available and knows the price
-	if KC_Items then
-		if KC_Items.GetItemPrices and KC_Items.GetCode and link then
-			price = KC_Items:GetItemPrices( KC_Items:GetCode(link) )
-		elseif KC_Common.GetItemPrices then
-			price = KC_Common:GetItemPrices( itemID )
-		end
-		if price and price > 0 then return price end
-	end
-	
+	if KC_Common and KC_Common.GetItemPrices then
+		price = KC_Common:GetItemPrices(itemID) or 0
+
 	-- check if ItemsSync is installed and knows the price
-	if ISync and ISync.FetchDB then
+	elseif ISync and ISync.FetchDB then
 		price = tonumber( ISync:FetchDB(itemID, "price") or 0 )
-		if price and price > 0 then return price end
 	end
 
 	-- check if Auctioneer is installed and knows the price
-	if  Auctioneer_GetVendorBuyPrice  then
+	if price == 0 and Auctioneer_GetVendorBuyPrice then
 		price = Auctioneer_GetVendorSellPrice(itemID)
-		if price and price > 0 then return price end
 	end
 
-	-- check if built-in copy of the Auctioneer base prices knows the item price
-	if MI2_BasePrices[itemID] then
-		return MI2_BasePrices[itemID]
+	-- check if Informant is installed and knows the price
+	if price == 0 and Informant then
+		local itdata = Informant.GetItem(itemID)--byCFM
+		if (itdata and itdata['sell'] and itdata['sell'] ~= 0) then price=itdata['sell'] end --byCFM
 	end
-
-	return 0  
+	-- check if pfUI is installed and knows the price
+	if price == 0 and pfUI and pfSellData then
+		if pfSellData[itemID] then --by CFM
+			local _, _, sell,_ = strfind(pfSellData[itemID], "(.*),(.*)") -- by CFM
+			price = tonumber(sell) -- by CFM
+		end
+	end
+	return price or 0
 end -- MI2_FindItemValue()
 
 
@@ -1160,16 +1421,82 @@ end -- MI2_FindItemValue()
 -- get loot ID code for given loot slot number, also return link object
 -----------------------------------------------------------------------------
 local function GetLootId( slot )
-	local idNumber = 0
-
+	local itemId = 0
 	local link = GetLootSlotLink( slot )
+
 	if link then
 		local _, _, idCode = string.find(link, "|Hitem:(%d+):(%d+):(%d+):")
-		idNumber = tonumber( idCode or 0 )
+		itemId = tonumber( idCode or 0 )
 	end
 
-	return idNumber, link
+	return itemId
 end -- GetLootId()
+
+
+-----------------------------------------------------------------------------
+-- MI2_RecordLootSlotData()
+--
+-- Record the data for one loot item. This function is called in turn for
+-- each loot item in the loot window.
+-- Retiurns 2 values : isSkinningItem, isClamMeat
+-----------------------------------------------------------------------------
+local function MI2_RecordLootSlotData( mobIndex, mobData, slotID )
+	local skinningLoot = false
+
+	-- obtain loot slot data from WoW
+	-- abort loot processing upon finding clam meat (ie. a clam was opened)
+	local texture, itemName, quantity, quality = GetLootSlotInfo( slotID )
+	if string.find(itemName, MI_TXT_CLAM_MEAT) ~= nil then  return false,true  end
+	local itemID = GetLootId( slotID )
+	quality = quality + 1
+
+	-- identify and count money loot, make sure it does not get counted as an item
+	if LootSlotIsCoin(slotID) then
+		local money = lootName2Copper(itemName)
+		mobData.copper = (mobData.copper or 0) + money
+		quality = -1
+	end
+
+	-- record item data within Mob database and in global item table
+	-- update cross reference table accordingly
+	if MobInfoConfig.SaveItems == 1 and quality >= MobInfoConfig.ItemsQuality then
+		if not mobData.itemList then mobData.itemList = {} end
+		mobData.itemList[itemID] = (mobData.itemList[itemID] or 0) + quantity
+		MI2_ItemNameTable[itemID] = itemName.."/"..quality
+		MI2_AddItemToXRefTable( mobIndex, itemName, quantity )
+	end
+
+	-- exit right here if this is a skinning loot window
+	if slotID == 1 and miSkinLoot[itemID] then  return true,false  end
+
+	if LootSlotIsItem(slotID) then
+		local itemValue = MI2_FindItemValue( itemID )
+		mobData.itemValue = (mobData.itemValue or 0) + itemValue
+		-- try to skip quest items in quality overview
+		if itemValue < 1 and quality == 2 then quality = -1 end
+	end
+
+	-- cloth drop couter
+	if miClothLoot[itemID] then
+		mobData.clothCount = (mobData.clothCount or 0) + miClothLoot[itemID]
+	end
+
+	-- record loot item quality (if enabled)
+	if quality == 1 then 
+		mobData.r1 = (mobData.r1 or 0) + 1
+	elseif quality == 2 then
+		mobData.r2 = (mobData.r2 or 0) + 1
+	elseif quality == 3 then
+		mobData.r3 = (mobData.r3 or 0) + 1
+	elseif quality == 4 then
+		mobData.r4 = (mobData.r4 or 0) + 1
+	elseif quality == 5 then
+		mobData.r5 = (mobData.r5 or 0) + 1
+	end
+	
+	midebug( MI_TXT_LOOT_SLOT.."="..slotID..", "..MI_TXT_Q_NAME.."=["..itemName.."], "..MI_TXT_Q_ID.."=["..itemID.."], "..MI_TXT_Q_q.."=["..(quality).."]", 1 )
+	return false,false
+end -- MI2_RecordLootSlotData()
 
 
 -----------------------------------------------------------------------------
@@ -1179,68 +1506,34 @@ end -- GetLootId()
 -- Return to the caller whether this loot window represents real mob loot
 -- or not. Examples for "not" are: skinning, clam loot
 -----------------------------------------------------------------------------
-local function MI2_RecordAllLootItems( mobIndex, mobData )
-	local isSkinningLoot = false
+function MI2_RecordAllLootItems( mobIndex, numItems )
+	local skinningLoot = false
+	local mobData = MI2_FetchMobData( mobIndex )
 
 	-- iterate through all loot slots and record data for each item
-	for slot = 1, GetNumLootItems(), 1 do
-		local money, itemValue = 0, 0
-
-		-- obtain loot slot data from WoW
-		local texture, itemName, quantity, quality = GetLootSlotInfo( slot )
-		local itemID, link = GetLootId( slot )
-		quality = quality + 1
-
-		-- abort loot processing upon finding clam meat (ie. a clam was opened)
-		if string.find(itemName, MI_TXT_CLAM_MEAT) ~= nil then  return true  end
-
-		-- calculate value of money loot
-		if LootSlotIsCoin(slot) then
-			money = lootName2Copper(itemName)
-			quality = -1
-		elseif LootSlotIsItem(slot) then
-			itemValue = MI2_FindItemValue( itemID, link )
-		end
-
-		-- skinning loot => its a skinning loot window
-		if miSkinLoot[itemID] and slot == 1 then  
-			isSkinningLoot = true  
-		end
-
-		-- record item data within Mob database and in global item table
-		-- update cross reference table accordingly
-		if MobInfoConfig.SaveItems == 1 and quality >= MobInfoConfig.ItemsQuality then
-			if not mobData.itemList then mobData.itemList = {} end
-			mobData.itemList[itemID] = (mobData.itemList[itemID] or 0) + quantity
-			MI2_ItemNameTable[itemID] = itemName.."/"..quality
-			MI2_AddItemToXRefTable( mobIndex, itemName, mobData.itemList[itemID] )
-		end
-
-		-- add loot item data to MobInfoDB
-		MI2_RecordLootData( mobData, itemID, money, itemValue, quality, isSkinningLoot )
-		if MI2_Debug > 1 then chattext( "M2DBG: Loot: slot="..slot..", name=["..item.."], id=["..itemID.."], val=["..itemValue.."], q=["..(quality+1).."]" ) end
+	for slotID = 1, numItems, 1 do
+		local skin, clam = MI2_RecordLootSlotData( mobIndex, mobData, slotID )
+		if clam then return end
+		skinningLoot = skinningLoot or skin
 	end -- for loop
 
-	return isSkinningLoot;
+	if skinningLoot then
+		mobData.skinCount = (mobData.skinCount or 0) + 1
+	else
+		-- update loot and empty loot counter
+		mobData.loots = (mobData.loots or 0) + 1
+		if numItems < 1 then
+			mobData.emptyLoots = (mobData.emptyLoots or 0) + 1
+		end
+	end
+
+	if MobInfoConfig.SaveBasicInfo == 1 then
+		MI2_StoreBasicInfo( mobIndex, mobData )
+	end
+	if MobInfoConfig.SaveItems == 1 then
+		MI2_StoreLootItems( mobIndex, mobData )
+	end
 end -- MI2_RecordAllLootItems()
-
-
------------------------------------------------------------------------------
--- MI2_RecordLooting()
---
--- for non skinning loot increment loot counter and (if applicable)
--- update kill counter, if there have been more kills then loots
------------------------------------------------------------------------------
-local function MI2_RecordLooting( mobData, numLootItems )
-	mobData.loots = (mobData.loots or 0) + 1
-	if mobData.loots > (mobData.kills or 0) then
-		mobData.kills = (mobData.kills or 0) + 1
-	end
-	-- update empty loot counter
-	if numLootItems < 1 then
-		mobData.emptyLoots = (mobData.emptyLoots or 0) + 1
-	end
-end
 
 
 -----------------------------------------------------------------------------
@@ -1250,10 +1543,10 @@ end
 -- the corpse loot window, return nil if loot is empty
 -- WoW Bug: GetNumLootItems() includes emptied loot window slots
 -----------------------------------------------------------------------------
-local function MI2_GetCorpseId( index )
+function MI2_GetCorpseId( index )
 	local corpseId
-	local numSlots = GetNumLootItems()
 	local numItems = 0 
+	local numSlots = GetNumLootItems()
 
 	if index and numSlots > 0 then
 		corpseId = index
@@ -1273,8 +1566,8 @@ end -- MI2_GetCorpseId()
 -- enter given corpse ID into list of all corpse IDs
 -- a list of corpse IDs is maintained to allow detecting corpse reopening
 -----------------------------------------------------------------------------
-local function MI2_StoreCorpseId( corpseId, isNewCorpse )
-	if MI2_Debug > 0 then chattext( "M2DBG: storing new corpse ID ["..(corpseId or "nil").."], newIdx="..MI2_NewCorpseIdx..", curIdx="..(MI2_CurrentCorpseIndex or "<nil>") ) end
+function MI2_StoreCorpseId( corpseId, isNewCorpse )
+	midebug( MI_TXT_NEW_CORPSE.." ["..(corpseId or "nil").."], newIdx="..MI2_NewCorpseIdx..", curIdx="..(MI2_CurrentCorpseIndex or "<nil>"), 1 )
 
 	-- store a new corpse ID
 	if isNewCorpse then
@@ -1286,7 +1579,7 @@ local function MI2_StoreCorpseId( corpseId, isNewCorpse )
 	end
 
 	if MI2_CurrentCorpseIndex then
-		MI2_RecentCorpses[MI2_CurrentCorpseIndex] = corpseId
+		MI2_RecentLoots[MI2_CurrentCorpseIndex] = corpseId
 		if not corpseId then
 			MI2_CurrentCorpseIndex = nil
 		end
@@ -1301,12 +1594,12 @@ end -- MI2_StoreCorpseId()
 -- This is done by calculating a (hopefully) unique corpse ID and adding
 -- it to the list if it is a new corpse ID. 
 -----------------------------------------------------------------------------
-local function MI2_CheckForCorpseReopen( mobIndex )
+function MI2_CheckForCorpseReopen( mobIndex )
 	local isReopen = false
 	local corpseId = MI2_GetCorpseId( mobIndex )
 
 	-- check if corpse ID is already in the list
-	for index, recentCorpseId in MI2_RecentCorpses do
+	for index, recentCorpseId in pairs(MI2_RecentLoots) do
 		if recentCorpseId == corpseId then
 			MI2_CurrentCorpseIndex = index
 			isReopen = true
@@ -1321,83 +1614,6 @@ local function MI2_CheckForCorpseReopen( mobIndex )
 
 	return isReopen
 end -- MI2_CheckForCorpseReopen()
-
-
------------------------------------------------------------------------------
--- MI2_EventLootOpened()
---
--- WoW event notification that loot frame has been opened
------------------------------------------------------------------------------
-function MI2_EventLootOpened( )
-	local index = MI2_Target.mobIndex or MI2_LastTargetIdx
-	local mobData = MI2_CurrentTargets[index]
-	local numLootItems = GetNumLootItems()
-
-	MI2_CurrentCorpseIndex = nil
-	MI2_LootFrameOpen = true
-
-	-- if there is a target it must be a dead one, the loot must be mob loot
-	-- reject non empty loots without target (empty loots opened by "QuickLoot" have no target)
-	if not mobData or (not MI2_Target.mobIndex and numLootItems > 0)
-			or (MI2_Target.mobIndex and not UnitIsDead("target")) or MI2_IsNonMobLoot then
-		if MI2_Debug > 0 then chattext( "M2DBG: non Mob loot detected, nonMobFlag="..tostring(MI2_IsNonMobLoot) ) end
-		MI2_IsNonMobLoot = false
-		return
-	end
-
-	-- check if this is a known corpse being reopened, reopened corpses
-	-- can (and must) be ignored because they have already been fully processed
-	if MI2_CheckForCorpseReopen(index) then
-		if MI2_Debug > 0 then chattext( "M2DBG: corpse REOPEN detected" ) end
-		return
-	end	
-
-	-- record all loot found on the corpse (called each time to catch skinning))
-	-- record location where Mob has been looted
-	local skinningLoot = MI2_RecordAllLootItems( index, mobData )
-	MI2_RecordLocation( index )
-	if not skinningLoot then
-		MI2_RecordLooting( mobData, numLootItems )
-	end
-
-	-- process target data right away if loots and kills are balanced
-	if mobData.loots == mobData.kills or skinningLoot then
-		MI2_ProcessTargetTable()
-	end
-end -- MI2_EventLootOpened()
-
-
------------------------------------------------------------------------------
--- MI2_EventLootSlotCleared()
---
--- WoW event notification that one loot item has been looted.
--- This results in a new corpse ID which must be stored for corpse reopen
--- detection
------------------------------------------------------------------------------
-function MI2_EventLootSlotCleared( )
-	if MI2_CurrentCorpseIndex then
-		MI2_StoreCorpseId( MI2_GetCorpseId(MI2_Target.mobIndex) )
-	end
-end -- MI2_EventLootSlotCleared
------------------------------------------------------------------------------
-
-
------------------------------------------------------------------------------
--- MI2_EventLootClosed()
---
--- Event handler for WoW event that the loot window has been closed.
--- This is used to catch empty loots when using auto-loot (Shift+RightClick)
--- In this case "LOOT_CLOSED" is the only loot event that fires
------------------------------------------------------------------------------
-function MI2_EventLootClosed( )
-	local mobIndex = MI2_Target.mobIndex
-	if mobIndex and not MI2_LootFrameOpen then
-		local mobData = MI2_NewMobTarget( mobIndex )
-		MI2_RecordLooting( mobData, 0 )
-		MI2_ProcessTargetTable()
-	end
-	MI2_LootFrameOpen = false
-end -- MI2_EventLootClosed
 
 
 -----------------------------------------------------------------------------
@@ -1421,7 +1637,7 @@ end -- MI2_GetLootItemString()
 
 
 -----------------------------------------------------------------------------
--- MI2_AddItemsToTooltip()
+-- MI2_AddOneItemToTooltip()
 --
 -- Add one loot item description line to the tooltip. Item description
 -- texts can optionally be shortened. Skinning loot uses skinned counter
@@ -1442,9 +1658,11 @@ local function MI2_AddOneItemToTooltip( mobData, itemID, amount, useFilter )
 
 	-- shorten item text to keep tooltip reasonably small
 	local shortItemNames = true
+	
 	if shortItemNames and string.len(itemText) > 35 then
 		itemText = string.sub(itemText,1,35).."..."
 	end
+	
 	itemText = itemText..": "..amount
 
 	local totalAmount = mobData.loots
@@ -1456,7 +1674,7 @@ local function MI2_AddOneItemToTooltip( mobData, itemID, amount, useFilter )
 	end
 	
 	GameTooltip:AddLine( itemColor..itemText )
-end -- MI2_AddItemsToTooltip
+end -- MI2_AddOneItemToTooltip
 
 
 -----------------------------------------------------------------------------
@@ -1464,54 +1682,52 @@ end -- MI2_AddItemsToTooltip
 --
 -- Add the list of items to the Mob tooltip. This function must be
 -- called only for mobs that exist and that have an existing item list.
--- The item list gets printed in three parts: first all real non cloth and
--- non skinning loot items, then the skinning and then the cloth items.
--- The parts can be enabled/disabled separately.
 --
 -- Notoriously similar and numerous items that radically increase tooltip
 -- size without being of much (if any) interest will be collapsed into
 -- just one item (example: "Green Hills of Stranglethorn" pages).
 -----------------------------------------------------------------------------
 local function MI2_AddItemsToTooltip( mobData )
+	local normalList = {}
+	local collapsedList = {}
 	local skinList = {}
 	local clothList = {}
-	local collapsedList = {}
 
-	-- collapse almost identical items into one item
-	for itemID, amount in mobData.itemList do
-		if MI2_ItemCollapseList[itemID] then
+	-- sort items into 4 separate lists: normal, skin, cloth, collapsed
+	for itemID, amount in pairs(mobData.itemList) do
+		if miSkinLoot[itemID] then
+			skinList[itemID] = amount
+		elseif miClothLoot[itemID] then
+			clothList[itemID] = amount
+		elseif MI2_ItemCollapseList[itemID] then
+			-- collapse almost identical items into one item
+			if MI2_ItemCollapseList[itemID] == 0 then
+				MI2_ItemCollapseList[itemID] = itemID
+			end
 			local collapsedID = MI2_ItemCollapseList[itemID]
 			collapsedList[collapsedID] = (collapsedList[collapsedID] or 0) + amount
+		else
+			normalList[itemID] = amount
 		end
 	end
 
-	-- first add all non cloth and non skin items to tooltip (apply item filter)
-	for itemID, amount in mobData.itemList do
-		local isSkin = miSkinLoot[itemID]
-		local isCloth = miClothLoot[itemID]
-		if isSkin then
-			skinList[itemID] = amount
-		elseif isCloth then
-			clothList[itemID] = amount
-		elseif MobInfoConfig.ShowItems == 1 and not MI2_ItemCollapseList[itemID] then
+	-- add all cloth and skinning items to tooltip
+	if MobInfoConfig.ShowClothSkin == 1 then
+		for itemID, amount in pairs(skinList) do
+			MI2_AddOneItemToTooltip( mobData, itemID, amount, false )
+		end
+		for itemID, amount in pairs(clothList) do
+			MI2_AddOneItemToTooltip( mobData, itemID, amount, false )
+		end
+	end
+
+	-- third: add normal and collapsed items to tooltip
+	if MobInfoConfig.ShowItems == 1 then
+		for itemID, amount in pairs(normalList) do
 			MI2_AddOneItemToTooltip( mobData, itemID, amount, true )
 		end
-	end
-
-	-- add collapsed items
-	for itemID, amount in collapsedList do
-		MI2_AddOneItemToTooltip( mobData, itemID, amount, true )
-	end
-
-	if MobInfoConfig.ShowClothSkin == 1 then
-		-- add all cloth and skinning items to tooltip
-		for itemID, amount in skinList do
-			MI2_AddOneItemToTooltip( mobData, itemID, amount, false )
-		end
-
-		-- add all cloth and skinning items to tooltip
-		for itemID, amount in clothList do
-			MI2_AddOneItemToTooltip( mobData, itemID, amount, false )
+		for itemID, amount in pairs(collapsedList) do
+			MI2_AddOneItemToTooltip( mobData, itemID, amount, true )
 		end
 	end
 end -- MI2_AddItemsToTooltip
@@ -1526,10 +1742,8 @@ end -- MI2_AddItemsToTooltip
 local function MI2_AddLocationToTooltip( location, showFullLocation )
 	local x = floor( (location.x1 + location.x2) / 2 )
 	local y = floor( (location.y1 + location.y2) / 2 )
-	local zone = nil
-	if MI2_Zones[location.c] then
-		zone = MI2_Zones[location.c][location.z]
-	end
+	local index = location.c*100+location.z
+	local zone = MI2_ZoneTable[index]
 	if zone then
 		if showFullLocation then
 			GameTooltip:AddLine( mifontGold..MI_TXT_LOCATION..mifontWhite..zone.." ("..x.."/"..y..")" )
@@ -1537,10 +1751,42 @@ local function MI2_AddLocationToTooltip( location, showFullLocation )
 			GameTooltip:AddLine( mifontGold..MI_TXT_LOCATION..mifontWhite..zone )
 		end
 	end
-	if not zone then
-		GameTooltip:AddLine( mifontGold..MI_TXT_LOCATION..mifontWhite.."Unknown")
-	end
 end -- MI2_AddLocationToTooltip()
+
+
+-----------------------------------------------------------------------------
+-- MI2_AddResistToTooltip()
+--
+-- Add the Mob resistances and immunities data to the tooltip.
+-----------------------------------------------------------------------------
+local function MI2_AddResistToTooltip( resistData )
+	local resiatances = ""
+	local immunities = ""
+	local shortcut, value
+
+	for shortcut, value in pairs(resistData) do
+		if string.len(shortcut) < 3 then
+			local hits = tonumber(resistData[shortcut.."Hits"]) or 1
+			if value < 0 then
+				if hits < 1 then
+					immunities = "  "..immunities..MI2_SpellSchools[shortcut]
+				else
+					immunities = "  "..immunities..MI2_SpellSchools[shortcut].."(partial)"
+				end
+			elseif value > 0 then
+				resiatances = "  "..resiatances..MI2_SpellSchools[shortcut]..":"..ceil((value/hits)*100).."%"
+			end
+		end
+	end
+
+	if resiatances ~= "" then
+		GameTooltip:AddLine( mifontGold..MI_TXT_RESIST..mifontWhite..resiatances )
+	end
+
+	if immunities ~= "" then
+		GameTooltip:AddLine( mifontGold..MI_TXT_IMMUN..mifontWhite..immunities )
+	end
+end -- MI2_AddResistToTooltip
 
 
 -----------------------------------------------------------------------------
@@ -1553,6 +1799,10 @@ local function MI2_CreateNormalTooltip( mobData, mobIndex, showFullLocation )
 	local copperAvg, itemValueAvg
 	local addEmptyLine = 0
 	
+	if mobData.lowHpAction == 1 then
+		GameTooltip:AddLine( mifontLightRed..">>>  "..MI2_CHATMSG_MONSTEREMOTE.."  <<<" )
+	end
+
 	if mobData.class and MobInfoConfig.ShowClass == 1 then
 		GameTooltip:AddDoubleLine( mifontGold..MI_TXT_CLASS, mifontWhite..mobData.class )
 	end
@@ -1567,11 +1817,6 @@ local function MI2_CreateNormalTooltip( mobData, mobIndex, showFullLocation )
 		MI2_ManaLine = GameTooltip:NumLines()
 	end
 
-	-- exit right here if mob does not exist in database
-	if not mobData.color then
-		return
-	end
-	
 	local mobGivesXp = not (mobData.color.r == 0.5  and  mobData.color.g == 0.5  and  mobData.color.b == 0.5)
 	if mobGivesXp and mobData.xp then
 		if MobInfoConfig.ShowXp == 1 then
@@ -1643,9 +1888,13 @@ local function MI2_CreateNormalTooltip( mobData, mobIndex, showFullLocation )
 		GameTooltip:AddDoubleLine(mifontGold..MI_TXT_MOB_VALUE,mifontWhite..copper2text(totalValue))
 	end
 
-	if  mobData.qualityStr ~= ""  and  MobInfoConfig.ShowQuality == 1  then
+	if mobData.qualityStr ~= "" and MobInfoConfig.ShowQuality == 1 then
 		if addEmptyLine == 1 then GameTooltip:AddLine("\n") addEmptyLine = 0 end
 		GameTooltip:AddDoubleLine(mifontGold..MI_TXT_QUALITY, mobData.qualityStr)
+	end
+
+	if mobData.resists and MobInfoConfig.ShowResists == 1 then
+		MI2_AddResistToTooltip( mobData.resists )
 	end
 
 	if mobData.location and MobInfoConfig.ShowLocation == 1 then
@@ -1659,21 +1908,28 @@ local function MI2_CreateNormalTooltip( mobData, mobIndex, showFullLocation )
 		if addEmptyLine == 1 then GameTooltip:AddLine("\n") addEmptyLine = 0 end
 		MI2_AddItemsToTooltip( mobData )
 	end
-
-  -----------------------------------------------------------------------
-  -- debugging code : append actual database contents to end of tooltip
-  -- enabled by setting local vairable "MI2_Debug"
-  if MI2_Debug > 1 then
-  GameTooltip:AddLine("----------------  D e b u g   I n f o  ----------------")
-  GameTooltip:AddDoubleLine("[DBG] "..mifontGold.."index",mobIndex)
-  if MobInfoDB[mobIndex] and MI2_PlayerName then
-    if MobInfoDB[mobIndex].bi then GameTooltip:AddDoubleLine("[DBG] "..mifontGold.."[lt,el,cp,iv,cc,xp,mt]",mifontWhite..MobInfoDB[mobIndex].bi) end
-    if MobInfoDB[mobIndex].qi then GameTooltip:AddDoubleLine("[DBG] "..mifontGold.."[r1,r2,r3,r4,r5]",mifontWhite..MobInfoDB[mobIndex].qi) end
-    if MobInfoDB[mobIndex][MI2_PlayerName] then GameTooltip:AddDoubleLine("[DBG] "..mifontGold.."[kl,dmin,dmax,dps]",mifontWhite..MobInfoDB[mobIndex][MI2_PlayerName]) end
-  end end
-  -- end of debugging code
-  -----------------------------------------------------------------------
 end -- MI2_CreateNormalTooltip()
+
+
+-----------------------------------------------------------------------------
+-- MI2_CreateDebugTooltip()
+--
+-- For debugging purposes append the actual mob database contents to the
+-- tooltip
+-----------------------------------------------------------------------------
+local function MI2_CreateDebugTooltip( mobIndex )
+	GameTooltip:AddLine(MI_TXT_DEBUG_INFO)
+	GameTooltip:AddDoubleLine(MI_TXT_DEBUG_DBG..mifontGold.."mobIndex=",mobIndex)
+	if MobInfoDB[mobIndex] then
+		if MobInfoDB[mobIndex].bi then GameTooltip:AddDoubleLine(MI_TXT_DEBUG_DBG..mifontGold..MI_TXT_DEBUG_BI,mifontWhite..MobInfoDB[mobIndex].bi) end
+		if MobInfoDB[mobIndex].qi then GameTooltip:AddDoubleLine(MI_TXT_DEBUG_DBG..mifontGold..MI_TXT_DEBUG_QI,mifontWhite..MobInfoDB[mobIndex].qi) end
+		if MobInfoDB[mobIndex].ml then GameTooltip:AddDoubleLine(MI_TXT_DEBUG_DBG..mifontGold..MI_TXT_DEBUG_ML,mifontWhite..MobInfoDB[mobIndex].ml) end
+		if MobInfoDB[mobIndex].il then GameTooltip:AddDoubleLine(MI_TXT_DEBUG_DBG..mifontGold..MI_TXT_DEBUG_IL,mifontWhite..MobInfoDB[mobIndex].il) end
+		if MobInfoDB[mobIndex].re then GameTooltip:AddDoubleLine(MI_TXT_DEBUG_DBG..mifontGold..MI_TXT_DEBUG_RE,mifontWhite..MobInfoDB[mobIndex].re) end
+		if MI2_PlayerName and MobInfoDB[mobIndex][MI2_PlayerName] then GameTooltip:AddDoubleLine(MI_TXT_DEBUG_DBG..mifontGold..MI2_PlayerName..MI_TXT_DEBUG_CHAR_DATA,mifontWhite..MobInfoDB[mobIndex][MI2_PlayerName]) end
+	end
+	if MobHealthDB[mobIndex] then GameTooltip:AddDoubleLine(MI_TXT_DEBUG_DBG..mifontGold..MI_TXT_DEBUG_HP.."=",mifontWhite..MobHealthDB[mobIndex]) end
+end
 
 
 -----------------------------------------------------------------------------
@@ -1685,27 +1941,30 @@ end -- MI2_CreateNormalTooltip()
 local function MI2_CreateCompactTooltip( mobData, mobIndex, showFullLocation )
 	local firstLine = GameTooltip:NumLines() + 1
 
+	if mobData.lowHpAction == 1 then
+		GameTooltip:AddLine( mifontLightRed..">>>  "..MI2_CHATMSG_MONSTEREMOTE.."  <<<" )
+	end
+
+	if mobData.class and MobInfoConfig.ShowClass == 1 then
+		GameTooltip:AddDoubleLine( mifontGold..MI_TXT_CLASS, mifontWhite..mobData.class )
+	end
+
 	if (mobData.healthCur or mobData.manaMax and mobData.manaMax > 0)  
 			and (MobInfoConfig.ShowHealth == 1 or MobInfoConfig.ShowMana == 1) then
-		GameTooltip:AddDoubleLine( mifontGold.."HP    "..mifontWhite..(mobData.healthCur or 0).." / "..(mobData.healthMax or 0), mifontWhite..(mobData.manaCur or 0).." / "..(mobData.manaMax or 0)..mifontGold.." Mana" )
+		GameTooltip:AddDoubleLine( mifontGold..MI_TXT_HP..mifontWhite..(mobData.healthCur or 0).." / "..(mobData.healthMax or 0), mifontWhite..(mobData.manaCur or 0).." / "..(mobData.manaMax or 0)..mifontGold..MI_TXT_MANA )
 		MI2_HealthLine = GameTooltip:NumLines()
 		if mobData.manaMax and mobData.manaMax > 0 then
 			MI2_ManaLine = MI2_HealthLine
 		end
 	end
 
-	-- exit right here if mob does not exist in database
-	if not mobData.color then
-		return
-	end
-
 	local mobGivesXp = not (mobData.color.r == 0.5  and  mobData.color.g == 0.5  and  mobData.color.b == 0.5)
 	if mobGivesXp and mobData.xp and (MobInfoConfig.ShowXp == 1 or MobInfoConfig.ShowNo2lev == 1) then
-		GameTooltip:AddDoubleLine( mifontGold.."XP    "..mifontWhite..mobData.xp, mifontWhite..mobData.mob2Level..mifontGold.." KtL    " )
+		GameTooltip:AddDoubleLine( mifontGold..MI_TXT_XP..mifontWhite..mobData.xp, mifontWhite..mobData.mob2Level..mifontGold..MI_TXT_KTL )
 	end
 
 	if (mobData.minDamage or mobData.dps) and MobInfoConfig.ShowDamage == 1 then
-		GameTooltip:AddDoubleLine( mifontGold.."Dmg "..mifontWhite..(mobData.minDamage or 0).."-"..(mobData.maxDamage or 0), mifontWhite..(mobData.dps or 0)..mifontGold.." Dps   " )
+		GameTooltip:AddDoubleLine( mifontGold..MI_TXT_DMG..mifontWhite..(mobData.minDamage or 0).."-"..(mobData.maxDamage or 0), mifontWhite..(mobData.dps or 0)..mifontGold..MI_TXT_DPS )
 	end
 
 	if  MobInfoConfig.CombinedMode == 1  and  MobInfoConfig.ShowCombined == 1  then
@@ -1713,7 +1972,7 @@ local function MI2_CreateCompactTooltip( mobData, mobIndex, showFullLocation )
 	end
 
 	if (mobData.kills or mobData.loots) and (MobInfoConfig.ShowKills == 1 or MobInfoConfig.ShowLoots == 1)  then
-		GameTooltip:AddDoubleLine( mifontGold.."Kills  "..mifontWhite..(mobData.kills or 0), mifontWhite..(mobData.loots or 0)..mifontGold.." Loots" )
+		GameTooltip:AddDoubleLine( mifontGold..MI_TXT_KILLS..mifontWhite..(mobData.kills or 0), mifontWhite..(mobData.loots or 0)..mifontGold..MI_TXT_LOOTS )
 	end          
 
 	if  (mobData.emptyLoots or mobData.clothCount) and (MobInfoConfig.ShowCloth == 1 or MobInfoConfig.ShowEmpty == 1)  then
@@ -1725,7 +1984,7 @@ local function MI2_CreateCompactTooltip( mobData, mobIndex, showFullLocation )
 		if mobData.loots then
 			clothStr = clothStr.." ("..ceil(((mobData.clothCount or 0)/mobData.loots)*100).."%) "
 		end
-		GameTooltip:AddDoubleLine( mifontGold.."CL     "..mifontWhite..clothStr, mifontWhite..emptyLootsStr..mifontGold.." EL      " )
+		GameTooltip:AddDoubleLine( mifontGold..MI_TXT_CL..mifontWhite..clothStr, mifontWhite..emptyLootsStr..mifontGold..MI_TXT_EL )
 	end
 
 	if (mobData.copper or mobData.itemValue) and mobData.loots and MobInfoConfig.ShowTotal == 1 then
@@ -1733,12 +1992,16 @@ local function MI2_CreateCompactTooltip( mobData, mobIndex, showFullLocation )
 		local itemValueAvg = ceil( (mobData.itemValue or 0) / mobData.loots )
 		local totalValue = copperAvg + itemValueAvg
 		if totalValue > 0 then
-			GameTooltip:AddDoubleLine( mifontGold.."Val    "..mifontWhite..copper2text(totalValue), mifontWhite..copper2text(copperAvg)..mifontGold.." Coins" )
+			GameTooltip:AddDoubleLine( mifontGold..MI_TXT_VAL..mifontWhite..copper2text(totalValue), mifontWhite..copper2text(copperAvg)..mifontGold..MI_TXT_COINS )
 		end
 	end
 
 	if  mobData.qualityStr ~= ""  and  MobInfoConfig.ShowQuality == 1  then
-		GameTooltip:AddLine( mifontGold.."Q      "..mifontWhite..mobData.qualityStr )
+		GameTooltip:AddLine( mifontGold..MI_TXT_Q..mifontWhite..mobData.qualityStr )
+	end
+
+	if mobData.resists and MobInfoConfig.ShowResists == 1 then
+		MI2_AddResistToTooltip( mobData.resists )
 	end
 
 	if mobData.location and MobInfoConfig.ShowLocation == 1 then
@@ -1783,46 +2046,54 @@ function MI2_BuildMobInfoTooltip( mobName, mobLevel, showFullLocation )
 	-- do not add anything to the tooltip for players
 	if  UnitIsPlayer("mouseover")  then  return  end
 
-	-- get mob data for hovered mob
-	local mobData = MI2_GetMobData( mobName, mobLevel, "mouseover" )
-	mobData.combinedStr = ""
+	-- record mob location at mouseover
+	local mobIndex = mobName..":"..mobLevel
+	if not showFullLocation then
+		MI2_RecordLocationAndType( mobIndex )
+	end
 
-	MI2_MouseoverIndex = mobName..":"..mobLevel
+	MI2_MouseoverIndex = mobIndex
+
+	-- get mob data for hovered mob
+	local mobData = MI2_FetchMobData( MI2_MouseoverIndex )
+	mobData.combinedStr = ""
 
 	-- handle combined Mob mode : try to find the other Mobs with same
 	-- name but differing level, add their data to the tooltip data
 	if  MobInfoConfig.CombinedMode == 1 and mobLevel > 0 then
-		for levelToCombine = mobLevel-3, mobLevel+3, 1 do
+		local combined = { combinedStr = "" }
+		MI2_AddTwoMobs( combined, mobData )
+		for levelToCombine = mobLevel-4, mobLevel+4, 1 do
 			if levelToCombine ~= mobLevel  then
-				local dataToCombine = MI2_GetMobData( mobName, levelToCombine )
-				if dataToCombine.color then
-					MI2_AddTwoMobs( mobData, dataToCombine )
-					mobData.combinedStr = mobData.combinedStr.." L"..levelToCombine
-					mobData.color = GetDifficultyColor( levelToCombine )
+				local mobIndex = mobName..":"..levelToCombine
+				if MobInfoDB[mobIndex] then
+					local dataToCombine = MI2_FetchMobData( mobIndex )
+					MI2_AddTwoMobs( combined, dataToCombine )
+					combined.combinedStr = combined.combinedStr..MI_TXT_LEVEL..levelToCombine
+					combined.color = GetDifficultyColor( levelToCombine )
 				end
 			else
-				mobData.combinedStr = mobData.combinedStr.." L"..levelToCombine
+				combined.combinedStr = combined.combinedStr..MI_TXT_LEVEL..levelToCombine
 			end
 		end
+		mobData = combined
 	end
 
-	-- if there is data about the "mouseover" mob in the target table it has to be added
-	local dataToCombine = MI2_CurrentTargets[MI2_MouseoverIndex]
-	if dataToCombine then
-		MI2_AddTwoMobs( mobData, dataToCombine )
-		if not mobData.color then mobData.color = {r=1.0;b=1.0;c=1.0} end
-	end
-
-	-- calculate number of mobs to next level based on mob experience
+	-- add unit and xp data for hovered mob
+	MI2_GetUnitBasedMobData( MI2_MouseoverIndex, mobData, "mouseover", mobLevel )
+	if not mobData.color then mobData.color = {r=1.0;b=1.0;c=1.0} end
 	if mobData.xp then
+		-- calculate number of mobs to next level based on mob experience
 		local xpCurrent = UnitXP("player") + mobData.xp
 		local xpToLevel = UnitXPMax("player") - xpCurrent
 		mobData.mob2Level = ceil(abs(xpToLevel / mobData.xp))+1
 	end
 
-	-- display the Mob data to the game tooltip
+	-- display the Mob data within the game tooltip
 	MI2_BuildQualityString( mobData )
-	if MobInfoConfig.CompactMode == 1 then
+	if IsAltKeyDown() and IsControlKeyDown() then
+		MI2_CreateDebugTooltip( MI2_MouseoverIndex )
+	elseif MobInfoConfig.CompactMode == 1 then
 		MI2_CreateCompactTooltip( mobData, MI2_MouseoverIndex, showFullLocation )
 	else
 		MI2_CreateNormalTooltip( mobData, MI2_MouseoverIndex, showFullLocation )
@@ -1872,7 +2143,6 @@ end -- MI2_DebugShowContainerItemInfo()
 -- appear on its own line.
 -----------------------------------------------------------------------------
 function MI2_BuildItemDataTooltip( itemName )
-
 	if MI2_DebugItems > 0 then MI2_DebugShowContainerItemInfo() end
 
 	-- get the table of all Mobs that drop the item, exit if none
@@ -1886,7 +2156,8 @@ function MI2_BuildItemDataTooltip( itemName )
 	local numMobs = 0
 	local resultList = {}
 	local sortList = {}
-	for mobIndex, itemAmount in itemFound do
+	local mobIndex, itemAmount
+	for mobIndex, itemAmount in pairs(itemFound) do
 		local mobData = {}
 		MI2_DecodeBasicMobData( nil, mobData, mobIndex )
 
@@ -1904,10 +2175,10 @@ function MI2_BuildItemDataTooltip( itemName )
 		if itemData.loots > 0 then
 			itemData.chance = floor(100.0 * itemData.count / itemData.loots + 0.5)
 			if itemData.chance > 100 then itemData.chance = 100 end
-			if itemData.loots < 5 then
+			if itemData.loots < 6 then
 				itemData.rating = itemData.chance + itemData.loots * 1000
 			else
-				itemData.rating = itemData.chance + 5000
+				itemData.rating = itemData.chance + 6000
 			end
 		else
 			itemData.chance = itemData.count
@@ -1919,7 +2190,7 @@ function MI2_BuildItemDataTooltip( itemName )
 	table.sort( sortList, function(a,b) return (a.rating > b.rating) end  )
 
 	-- add Mobs to tooltip
-	GameTooltip:AddLine( mifontLightBlue..MI_TXT_DROPPED_BY..numMobs.." Mobs:" )
+	GameTooltip:AddLine( mifontLightBlue..MI_TXT_DROPPED_BY..numMobs..MI_TXT_MOBS_1 )
 	if numMobs > 8 then numMobs = 8 end
 	for idx = 1, numMobs do
 		local data = sortList[idx]
@@ -1929,28 +2200,50 @@ function MI2_BuildItemDataTooltip( itemName )
 			GameTooltip:AddDoubleLine( mifontLightBlue.."  "..data.name, mifontWhite..data.chance )
 		end
 	end
-	if sortList[9] then
-		GameTooltip:AddLine( mifontLightBlue.."  [...]" )
-	end
 
 	return true
 end -- MI2_BuildItemDataTooltip()
 
 
 -----------------------------------------------------------------------------
--- MI2_DpsCalculation()
+-- MI2_ScanSpellbook()
+--
+-- Scan the spellbook to enter all spells and their spell school into
+-- the "MI2_SpellToSchool" conversion table that is needed for resistances
+-- and immunities recording.
+-----------------------------------------------------------------------------
+function MI2_ScanSpellbook()
+	local spellBookPage = 2
+	
+	while spellBookPage > 0 do
+		local pageName, texture, offset, numSpells = GetSpellTabInfo( spellBookPage )
+		if pageName and offset and numSpells then
+			for spellIndex = (offset+1), (offset + numSpells) do
+				local spellName = GetSpellName( spellIndex, BOOKTYPE_SPELL )
+				if spellName and (not string.find(spellName,":")) then
+					for school in pairs(MI2_SpellSchools) do
+						local schoolOK = string.find( pageName, school )
+						if schoolOK and string.len(school) > 2 then
+							MI2_SpellToSchool[spellName] = school
+						end
+					end
+				end
+			end
+			spellBookPage = spellBookPage + 1
+		else
+			spellBookPage = 0
+		end
+	end
+end -- MI2_ScanSpellbook
+
+
+-----------------------------------------------------------------------------
+-- MI2_RecordHit()
 --
 -- Calculate an updated DPS (damage per second) based on the current target
 -- data in "MI2_Target" and the new damage value given as parameter.
 -----------------------------------------------------------------------------
-function MI2_DpsCalculation( damage, contextInfo )
-
-if not damage then
-	chattext( "MI2_ERROR: chat message parse error in "..contextInfo )
-	return
-end
-
-	-- calculate and update DPS for target
+function MI2_RecordHit( damage, spell, school, isPeriodic )
 	if not MI2_Target.FightStartTime then
 		MI2_Target.FightStartTime = GetTime() - 1.0
 		MI2_Target.FightEndTime = GetTime()
@@ -1959,166 +2252,43 @@ end
 		MI2_Target.FightEndTime = GetTime()
 		MI2_Target.FightDamage = MI2_Target.FightDamage + damage
 	end
-end  -- MI2_DpsCalculation()
+
+	if spell and school and MI2_SpellSchools[school] then
+		MI2_SpellToSchool[spell] = school
+	elseif spell then
+		school = MI2_SpellToSchool[spell]
+	end
+
+	-- record spell hit data (needed for spell resist calculations)
+	local acronym = MI2_SpellSchools[school]
+	if school and acronym and not isPeriodic then
+		local mobData = MI2_FetchMobData( MI2_Target.mobIndex )
+		mobData.resists[acronym.."Hits"] = (mobData.resists[acronym.."Hits"] or 0)+ 1
+	end
+end  -- MI2_RecordHit()
 
 
 -----------------------------------------------------------------------------
--- MI2_EventSelfMelee()
+-- MI2_RecordImmunResist()
 --
--- handler for event CHAT_MSG_COMBAT_SELF_HITS
--- handles normal and critical melee damage
+-- Record that the given mob has either resisted a spell or is immune to
+-- a spell.
 -----------------------------------------------------------------------------
-function MI2_EventSelfMelee( )
-	local dmgText = arg1
-
-	-- normal melee damage
-	for  creature, damage in string.gfind( dmgText, MI_PARSE_SELF_MELEE ) do
-		MI2_DpsCalculation( tonumber(damage), "PARSE_SELF_MELEE" )
-		return
-	end
-
-	-- critical melee damage
-	for  creature, damage in string.gfind( dmgText, MI_PARSE_SELF_MELEE_CRIT ) do
-		MI2_DpsCalculation( tonumber(damage), "PARSE_SELF_MELEE_CRIT" )
-		return
-	end
-end  -- MI2_EventSelfMelee()
-
-
------------------------------------------------------------------------------
--- MI2_EventSelfSpell()
---
--- handler for event "CHAT_MSG_SPELL_SELF_DAMAGE"
--- handles normal and critical spell damage and damage done by bows/guns
------------------------------------------------------------------------------
-function MI2_EventSelfSpell( )
-	local dmgText = arg1
-
-	-- normal spell damage
-	for  spell, creature, damage in string.gfind( dmgText, MI_PARSE_SELF_SPELL ) do
-		MI2_DpsCalculation( tonumber(damage), "PARSE_SELF_SPELL" )
-		return
-	end
-
-	-- critical spell damage
-	for  spell, creature, damage in string.gfind( dmgText, MI_PARSE_SELF_SPELL_CRIT ) do
-		MI2_DpsCalculation( tonumber(damage), "PARSE_SELF_SPELL_CRIT" )
-		return
-	end
-
-	-- damage done by bows/guns
-	for  spell, creature, damage in string.gfind( dmgText, MI_PARSE_SELF_BOW ) do
-		MI2_DpsCalculation( tonumber(damage), "PARSE_SELF_BOW" )
-		return
-	end
-
-	-- critical damage done by bows/guns (for German this will get parsed above as "normal spell")
-	for  spell, creature, damage in string.gfind( dmgText, MI_PARSE_SELF_BOW_CRIT ) do
-		MI2_DpsCalculation( tonumber(damage), "PARSE_SELF_BOW" )
-		return
-	end
-end -- MI2_EventSelfSpell()
-
-
------------------------------------------------------------------------------
--- MI2_EventSelfPet()
---
--- handler for event "CHAT_MSG_COMBAT_PET_HITS" and "CHAT_MSG_SPELL_PET_DAMAGE"
--- handles normal and critical melee/spell damage done by players pet
------------------------------------------------------------------------------
-function MI2_EventSelfPet( )
-	local dmgText = arg1
-
-	-- damage done by players pet
-	for  petName, creature, damage in string.gfind( dmgText, MI_PARSE_SELF_PET ) do
-		MI2_DpsCalculation( tonumber(damage), "PARSE_SELF_PET" )
-		return
-	end
-
-	-- critical damage done by players pet
-	for  petName, creature, damage in string.gfind( dmgText, MI_PARSE_SELF_PET_CRIT ) do
-		MI2_DpsCalculation( tonumber(damage), "PARSE_SELF_PET_CRIT" )
-		return
-	end
-
-	-- damage done by spells of players pet
-	for  petName, spell, creature, damage in string.gfind( dmgText, MI_PARSE_SELF_PET_SPELL ) do
-		MI2_DpsCalculation( tonumber(damage), "PARSE_SELF_PET_SPELL" )
-		return
-	end
-
-	-- critical damage done by spells of players pet
-	for  petName, spell, creature, damage in string.gfind( dmgText, MI_PARSE_SELF_PET_SPELL_CRIT) do
-		MI2_DpsCalculation( tonumber(damage), "PARSE_SELF_PET_SPELL_CRIT" )
-		return
-	end
-end -- MI2_EventSelfPet()
-
-
------------------------------------------------------------------------------
--- MI2_EventSpellPeriodic()
---
--- handler for event "CHAT_MSG_SPELL_PERIODIC_CREATURE_DAMAGE"
--- handles periodic damage done by spells
------------------------------------------------------------------------------
-function MI2_EventSpellPeriodic( )
-	local dmgText = arg1
-
-	-- periodic spell damage
-	for  dummy, damage, damageType, spell in string.gfind( dmgText, MI_PARSE_SELF_SPELL_PERIODIC ) do
-		if GetLocale()=="zhTW" then
-			spell, dummy, damage, damageType = dummy, damage, damageType, spell;
-		end
-		MI2_DpsCalculation( tonumber(damage), "PARSE_SELF_SPELL_PERIODIC" )
-		return
-	end
-end -- MI2_EventSpellPeriodic()
-
-
------------------------------------------------------------------------------
--- MI2_EventCreatureDiesXP()
---
--- event handler for the chat message telling us that a creature died
--- and gave us XP points
------------------------------------------------------------------------------
-function MI2x_EventCreatureDiesXP()
-	local idx = MI2_LastTargetIdx
-
-	-- capture kills giving XP
-	-- sometimes the kill deselects current target, sometimes it doesn't
-	-- yet to properly record a kill the idx (ie. name and level) is required
-	for creatureName, xp in string.gfind(arg1, MI_MOB_DIES_WITH_XP ) do
-		if not idx or creatureName == MI2_Target.name then
-			idx = MI2_Target.index
-		end
-		if idx then
-			MI2_RecordKill( idx, tonumber(xp) )
-			MI2_RecordLocation( idx )
-		end
-	end
-end -- MI2_EventCreatureDiesXP()
-
-
------------------------------------------------------------------------------
--- MI2_CreatureDiesHostile()
---
--- Event handler for chat message telling me that a hostile creature in
--- my vicinity has died. The kill will only get counted if my current
--- targets name is identical to the name of the creature that died, and if
--- I have actually been in a fight with the mob.
------------------------------------------------------------------------------
-function MI2x_CreatureDiesHostile()
-	local index = MI2_Target.mobIndex
-	if index and UnitIsDead("target") then
-		-- kills without XP never deselect the current target
-		for creatureName in string.gfind(arg1, MI_MOB_DIES_WITHOUT_XP ) do
-			if creatureName == MI2_Target.name and MI2_Target.FightStartTime then
-				MI2_RecordKill( index, 0 )
-				MI2_RecordLocation( index )
+function MI2_RecordImmunResist( mobName, spell, isResist )
+	if mobName == MI2_Target.name and MI2_Target.ResOk then
+		local mobIndex = MI2_Target.mobIndex
+		local mobData = MI2_FetchMobData( mobIndex )
+		local school = MI2_SpellToSchool[spell]
+		if school then
+			local acronym = MI2_SpellSchools[school]
+			if isResist then
+				mobData.resists[acronym] = (mobData.resists[acronym] or 0) + 1
+			else
+				mobData.resists[acronym] = -1
 			end
 		end
 	end
-end -- MI2_CreatureDiesHostile()
+end -- MI2_RecordImmunResist()
 
 
 -----------------------------------------------------------------------------
@@ -2131,7 +2301,7 @@ function MI2_UpdateMobInfoState()
 	local children = { MI2_FrmTooltipOptions:GetChildren() }
 
 	-- update MobInfo options dialog
-	for index, frame in children do
+	for index, frame in pairs(children) do
 		if frame ~= MI2_OptDisableMobInfo and frame ~= MI2_OptItemFilter then
 			if MobInfoConfig.DisableMobInfo == 0 then
 				frame:Enable()
@@ -2142,8 +2312,6 @@ function MI2_UpdateMobInfoState()
 			end
 		end
 	end
-
-	MI2_InitializeEventTable()
 end  -- MI2_UpdateMobInfoState()
 
 -----------------------------------------------------------------------------
@@ -2158,7 +2326,7 @@ function MI2_UpdateTooltipHealthMana( healthCur, healthMax )
 		local healthText = healthCur.." / "..healthMax
 		if MobInfoConfig.CompactMode == 1 then
 			local healthLine = getglobal(tooltip.."TextLeft"..MI2_HealthLine)
-			healthLine:SetText( mifontGold.."HP    "..mifontWhite..healthText )
+			healthLine:SetText( mifontGold..MI_TXT_HP..mifontWhite..healthText )
 		else
 			local healthLine = getglobal(tooltip.."TextRight"..MI2_HealthLine)
 			healthLine:SetText( mifontWhite..healthText )
@@ -2169,7 +2337,7 @@ function MI2_UpdateTooltipHealthMana( healthCur, healthMax )
 		local manaText = mifontWhite..UnitMana("mouseover").." / "..UnitManaMax("mouseover")
 		local manaLine = getglobal(tooltip.."TextRight"..MI2_ManaLine)
 		if MobInfoConfig.CompactMode == 1 then
-			manaLine:SetText( manaText..mifontGold.." Mana" )
+			manaLine:SetText( manaText..mifontGold..MI_TXT_MANA )
 		else
 			manaLine:SetText( manaText )
 		end

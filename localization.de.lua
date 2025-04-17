@@ -8,20 +8,7 @@ if ( GetLocale() == "deDE" ) then
 
 MI_DESCRIPTION = "Erweitert den Tooltip um Gegnerinformationen und erg\195\164nzt das Zielfenster um Gesundheit/Mana";
 
-MI_MOB_DIES_WITH_XP = "(.+) stirbt, Ihr bekommt (%d+) Erfahrung"
-MI_MOB_DIES_WITHOUT_XP = "(.+) stirbt"
-MI_PARSE_SPELL_DMG = "(.+)s (.+) trifft Euch f\195\188r (%d+) (.+) Schaden"
-MI_PARSE_BOW_DMG = "(.+) trifft Euch %(mit (.+)%). Schaden: (%d+)"
-MI_PARSE_COMBAT_DMG = "(.+) trifft Euch f\195\188r (%d+) Schaden"
-MI_PARSE_SELF_MELEE = "Ihr trefft (.+). Schaden: (%d+)"
-MI_PARSE_SELF_MELEE_CRIT = "Ihr trefft (.+) kritisch f\195\188r (%d+) Schaden"
-MI_PARSE_SELF_SPELL = "Euer (.+) trifft (.+). Schaden: (%d+)"
-MI_PARSE_SELF_SPELL_CRIT = "Euer (.+) trifft (.+) kritisch. Schaden: (%d+)";
-MI_PARSE_SELF_SPELL_PERIODIC = "(.+) erleidet (%d+) (.+)schaden %(durch (.+)%)"
-MI_PARSE_SELF_BOW = "(.+) von Euch trifft (.+) f\195\188r (%d+) Schaden"
-MI_PARSE_SELF_BOW_CRIT = "(.+) von Euch trifft (.+) kritisch. Schaden: (%d+)"
-MI_PARSE_SELF_PET = "(.+) trifft (.+) f\195\188r (%d+) Schaden"
-MI_PARSE_SELF_PET_SPELL = "(%a+)s (.+) trifft (.+) f\195\188r (%d+)"
+MI2_SpellSchools = { Arkan="ar", Feuer="fi", Frost="fr", Schatten="sh", Heilig="ho", Natur="na" }
 
 MI_TXT_GOLD   = " Gold";
 MI_TXT_SILVER = " Silber";
@@ -60,8 +47,99 @@ MI_TXT_TRIM_DOWN_CONFIRM = "ACHTUNG: Das L\195\182schen ist unwiederruflich. Wol
 MI_TXT_CLAM_MEAT		= "uschelfleisch"
 MI_TXT_SHOWING			= "Liste Zeigt: "
 MI_TXT_DROPPED_BY		= "Beute von: "
-BINDING_NAME_MI2CONFIG	= "MobInfo2 Optionen \195\150ffnen"
 MI_TXT_DEL_SEARCH_CONFIRM = "M\195\182chten Sie wirklich alle %d Mobs in der Suchergebnisliste aus der MobInfo Datenbank L\195\182SCHEN ?"
+MI_TXT_WRONG_LOC		= "FEHLER : Lokalisierung (ie. Sprache) der MobInfo Datenbank ist inkompatibel mit dem WoW-Client. MobInfo Datenbank ist unbrauchbar und muss ersetzt werden."
+MI_TXT_STATUS = "Status: "
+MI_TXT_STATUS_ALREADY = "Status: <data already imported"
+MI_TXT_STATUS_OLD = "Status: <import database too old for import>"
+MI_TXT_STATUS_WRONG = "Status: <import database has wrong language (locale)>"
+MI_TXT_STATUS_AVAILABLE = " available for import"
+MI_TXT_STATUS_NOIMPORT = "Status: <no import data>"
+MI_TXT_MOBS = " Mobs"
+MI_TXT_MOBS_1 = " Mobs:"
+MI_TXT_HP_VALUES = " HP values"
+MI_TXT_MANA = " Mana"
+MI_TXT_HP = "HP    "
+MI_TXT_LEVEL = " L"
+MI_TXT_XP = "XP    "
+MI_TXT_KTL = " KtL    "
+MI_TXT_DMG = "Dmg "
+MI_TXT_DPS = " Dps   "
+MI_TXT_KILLS = "Kills  "
+MI_TXT_LOOTS = " Loots"
+MI_TXT_CL = "CL     "
+MI_TXT_EL = " EL      "
+MI_TXT_VAL = "Val    "
+MI_TXT_COINS = " Coins"
+MI_TXT_Q = "Q      "
+MI_TXT_DEBUG_INFO = "--------------  D e b u g   I n f o  --------------"
+MI_TXT_DEBUG_DBG = "[DBG] "
+MI_TXT_DEBUG_BI = "bi(basic info)"
+MI_TXT_DEBUG_QI = "qi(quality info)"
+MI_TXT_DEBUG_ML = "ml(mob location)"
+MI_TXT_DEBUG_IL = "il(item list)"
+MI_TXT_DEBUG_RE = "re(resists)"
+MI_TXT_DEBUG_CHAR_DATA = "(char data)"
+MI_TXT_DEBUG_HP = "hp(health data)"
+MI_TXT_IMMUN = "Immun:"
+MI_TXT_RESIST = "Resist:"
+MI_TXT_NEW_CORPSE = "storing new corpse ID"
+MI_TXT_LOOT_SLOT = "Loot: slot"
+MI_TXT_Q_NAME = "name"
+MI_TXT_Q_ID = "id"
+MI_TXT_Q_q = "q"
+MI_TXT_REC_NEW_DPS = "recording new dps: idx"
+MI_TXT_NEW_DPS = "new dps"
+MI_TXT_REC_NEW_MIN_DMG = "recording new MIN dmg "
+MI_TXT_REC_NEW_DMG_FOR = " for "
+MI_TXT_REC_NEW_DMG_OLD = "old"
+MI_TXT_REC_NEW_MAX_DMG = "recording new MAX dmg "
+MI_TXT_REC_KILL_MOB = "recording kill: mob"
+MI_TXT_REC_KILL_MOB_KILLS = "kills"
+MI_TXT_REC_KILL_MOB_XP = "XP"
+MI_TXT_REC_LOC = "recording location"
+MI_TXT_SLASH_VER = "v"
+MI_TXT_SLASH_DAT_TARGET = "data for target "
+MI_TXT_SLASH_DAT_DEL = " has been deleted"
+MI_TXT_SLASH_DAT_DB_DEL = "database deleted: "
+MI_TXT_SLASH_DB_IMPORT = " starting external database import ...."
+MI_TXT_SLASH_IMPORTED = " imported "
+MI_TXT_SLASH_NEW_MOBS = " new Mobs"
+MI_TXT_SLASH_NEW_HP_VAL = " new health values"
+MI_TXT_SLASH_NEW_ITEMS = " new loot items"
+MI_TXT_SLASH_UPD_DATA = " updated data for "
+MI_TXT_SLASH_EXS_MOBS = " existing Mobs"
+MI_TXT_SLASH_NOT_UPD = " did NOT update data for "
+MI_TXT_SLASH_VERSION = " MobInfo-2 Version "
+MI_TXT_SLASH_USAGE = " Usage: enter /mobinfo2 or /mi2 to open interface"
+MI_TXT_SLASH_HELP = " for AddOn help go to "
+MI_TXT_SLASH_OFF = "-OFF-"
+MI_TXT_SLASH_ON = "-ON-"
+MI_TXT_SEARCH_DEL = "search result deleted : "
+MI_TXT_SEARCH_MOBS = " Mobs"
+MI_TXT_SEARCH_LVL = "  L"
+MI_TXT_EVENTS_NEW_TARGET = "new target: id"
+MI_TXT_EVENTS_LAST = "last"
+MI_TXT_EVENTS_NON_MOB = "non mob loot event: action"
+MI_TXT_EVENTS_TYPE = "type"
+MI_TXT_EVENTS_NO_XP = "no XP kill event: mob"
+MI_TXT_EVENTS_KILL_XP = "kill event with XP: mob"
+MI_TXT_EVENTS_XP = "xp"
+MI_TXT_EVENTS_MI_VER = "MobInfo-2  v"
+MI_TXT_EVENTS_MI_LOADED = "  Loaded, enter /mi2 or /mobinfo2 for interface"
+MI_TXT_CONVDROPRATE_CONVERTER = "DR Converter: "
+MI_TXT_CONVDROPRATE_MOBSFOUND = " Mobs found in DropRate data,"
+MI_TXT_CONVDROPRATE_NEWMOBSFOUND = " new Mobs added to database,"
+MI_TXT_CONVDROPRATE_EXISTINGMOBS = " existing Mobs expanded,"
+MI_TXT_CONVDROPRATE_PARTIALMOBS = " Mobs partially converted,"
+MI_TXT_CONVDROPRATE_SKIPPEDITEMS = " unknown items skipped,"
+MI_TXT_CONVDROPRATE_ADDEDITEMS = " items added to database,"
+MI_TXT_CONVDROPRATE_CONVERSTART = "DropRate conversion started ..."
+MI_TXT_CONVDROPRATE_NOTFOUND = "DropRate database not found"
+
+MI2_CHATMSG_MONSTEREMOTE = "versucht zu fl\195\188chten"
+
+BINDING_NAME_MI2CONFIG	= "MobInfo2 Optionen \195\150ffnen"
 
 MI2_FRAME_TEXTS["MI2_FrmTooltipOptions"]	= "Mob Tooltip Inhalt"
 MI2_FRAME_TEXTS["MI2_FrmHealthOptions"]		= "MobHealth Optionen"
@@ -199,6 +277,10 @@ MI2_OPTIONS["MI2_OptShowBlankLines"] =
 { text = "Leerzeilen anzeigen"; help = "Im Tooltip leere Trennzeilen anzeigen";
 info = "Leere Trennzeilen sollen die Lesbarkeit des Tooltips erh\195\182hen." }
 
+MI2_OPTIONS["MI2_OptShowResists"] = 
+{ text = "Resistenzen und Immunit\195\164ten"; help = "Zeigt im Tooltip Resistenzen und Immunit\195\164ten";
+info = "Recorded data about the Mobs elemental spell school\nresistances or immunities is added to the tooltip." }
+
 MI2_OPTIONS["MI2_OptCombinedMode"] = 
 { text = "Gleiche Mobs Zusammenfassen"; help = "Zusammenfassen der Daten f\195\188r Gegner gleichen Namens";
 info = "Die Daten von Gegner die sich nur im Level unterscheiden\n werden kombiniert und gemeinsam angezeigt. Ein entsprechender\nHinweis erscheint im Tooltip." }
@@ -282,14 +364,18 @@ info = "Du kannst die Qualit\195\164t der zu speichernden Gegenst\195\164nde aus
 
 MI2_OPTIONS["MI2_OptSaveBasicInfo"] = 
 { text = "Speichern der Basis Mob Daten"; help = "Speichern grundlegender Informationen zu allen Mobs.";
-info = "Beinhaltet: XP, Mob Typ, Z\195\164hler f\195\188r: Loots, leere Loots, Stoff, Geld, Gegenstandswert"; }
+info = "Beinhaltet: Mob Typ, Z\195\164hler f\195\188r: Loots, leere Loots, Stoff, Geld, Gegenstandswert"; }
 
 MI2_OPTIONS["MI2_OptSaveCharData"] = 
 { text = "Speichern aller Spielerbezogenen Mob Daten"; help = "Speichern aller auf die Spielfigur bezogenen Mob Daten.";
-info = "Aktiviert die Speicherung der folgenden Daten:\nAnzahl get\195\182tet, min/max Schaden, DPS (Schaden pro Sekunde)\n\nDiese Daten werden pro Spielfigur gespeichert und k\195\182nnen nur\ngemeinsam ein/ausgeschaltet werden."; }
+info = "Aktiviert die Speicherung der folgenden Daten:\nAnzahl get\195\182tet, min/max Schaden, DPS (Schaden pro Sekunde), Mob XP\n\nDiese Daten werden pro Spielfigur gespeichert und k\195\182nnen nur\ngemeinsam ein/ausgeschaltet werden."; }
 
 MI2_OPTIONS["MI2_OptSaveLocation"] = 
 { text = "Speichern der Daten zum Mob Fundort"; help = "Speichert pro Mobs die Gegend und die Koordinaten des Fundortes." }
+
+MI2_OPTIONS["MI2_OptSaveResist"] = 
+{ text = "Speichern der Daten zu Resistenzen und Immunit\195\164ten"; help = "Speichert Daten zu den magischen Resistenzen und Immunit\195\164ten eines Mobs.";
+info = "Separat pro Magieart wird gez\195\164hlt, wieviele Spells gegen das Monster\nerfolgreich waren und wievielen wiederstanden wurde."; }
 
 MI2_OPTIONS["MI2_OptItemsQuality"] = 
 { text = ""; help = "Speichern der Loot Details f\195\188r diese und Bessere Gegenst\195\164nde.";

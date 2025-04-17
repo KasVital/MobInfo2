@@ -170,7 +170,6 @@
 -- expression.
 --
 -- Values you can get without "unitId" (as per Example A above):
---    mobData.healthMax  :  health maximum
 --    mobData.xp         :  experience value
 --    mobData.kills      :  number of times current player has killed this mob
 --    mobData.minDamage  :  minimum damage done by mob
@@ -194,6 +193,7 @@
 -- Additional values you will get with "unitId" (as per Example B above):
 --    mobData.class      :  class of mob as localized text
 --    mobData.healthCur  :  current health of given unit
+--    mobData.healthMax  :  health maximum
 --    mobData.manaCur    :  current mana of given unit
 --    mobData.manaMax    :  maximum mana for given unit
 --

@@ -446,6 +446,13 @@
 									</Anchor>
 								</Anchors>
 							</CheckButton>
+							<CheckButton name="MI2_OptShowResists" inherits="MI2_CheckboxTemplate">
+								<Anchors>
+									<Anchor	point="TOPLEFT" relativeTo="MI2_OptShowClothSkin">
+										<Offset> <AbsDimension x="0" y="-20" /> </Offset>
+									</Anchor>
+								</Anchors>
+							</CheckButton>
 
 							<!-- ==================================================== -->
 							<!-- buttons controlling the tooltip show options		  -->
@@ -665,7 +672,7 @@
 					<!-- ==================================================== -->
 					<!-- subframe with database options						  -->
 					<Frame name="MI2_FrmDatabaseOptions" inherits="MI2_OptionsFrameTemplate" hidden="true" >
-						<Size> <AbsDimension x="400" y="250" />	</Size>
+						<Size> <AbsDimension x="400" y="270" />	</Size>
 						<Anchors>
 							<Anchor	point="TOPLEFT">
 								<Offset> <AbsDimension x="20" y="-25" /> </Offset>
@@ -753,9 +760,16 @@
 									</Anchor>
 								</Anchors>
 							</CheckButton>
-							<CheckButton name="MI2_OptSaveItems" inherits="MI2_CheckboxTemplate">
+							<CheckButton name="MI2_OptSaveResist" inherits="MI2_CheckboxTemplate">
 								<Anchors>
 									<Anchor	point="TOPLEFT"	relativeTo="MI2_OptSaveLocation">
+										<Offset> <AbsDimension x="0" y="-20" /> </Offset>
+									</Anchor>
+								</Anchors>
+							</CheckButton>
+							<CheckButton name="MI2_OptSaveItems" inherits="MI2_CheckboxTemplate">
+								<Anchors>
+									<Anchor	point="TOPLEFT"	relativeTo="MI2_OptSaveResist">
 										<Offset> <AbsDimension x="0" y="-20" /> </Offset>
 									</Anchor>
 								</Anchors>
@@ -1122,8 +1136,8 @@
 		<Scripts>
 			<OnLoad> MI2_OptionsFrameOnLoad(); </OnLoad>
 			<OnShow> MI2_OptionsFrameOnShow(); </OnShow>
-			<OnMouseDown> miConfig_OnMouseDown(arg1); </OnMouseDown>
-			<OnMouseUp>	miConfig_OnMouseUp(arg1); </OnMouseUp>
+			<OnMouseDown> miConfig_OnMouseDown(); </OnMouseDown>
+			<OnMouseUp>	miConfig_OnMouseUp(); </OnMouseUp>
 		</Scripts>
 	</Frame>
 </Ui>

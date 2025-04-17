@@ -13,7 +13,7 @@ MI2_SearchOptions.MaxLevel = 65
 MI2_SearchOptions.Normal = 1
 MI2_SearchOptions.Elite = 0
 MI2_SearchOptions.Boss = 0
-MI2_SearchOptions.MinLoots = 2
+MI2_SearchOptions.MinLoots = 0
 MI2_SearchOptions.MobName = ""
 MI2_SearchOptions.ItemName = ""
 MI2_SearchOptions.CompactResult = 1
@@ -39,7 +39,7 @@ local function MI2_SearchForItems( itemName, enterItemsIntoList )
 	end
 
 	if itemName ~= "" or enterItemsIntoList then
-		for idx in MI2_ItemNameTable do
+		for idx in pairs(MI2_ItemNameTable) do
 			local itemFound = true
 			local itemText, itemColor = MI2_GetLootItemString( idx )
 			if itemName ~= "*" then
@@ -67,8 +67,6 @@ end -- MI2_SearchForItems()
 -- displaying the result in the scrollable result list.
 -----------------------------------------------------------------------------
 local function MI2_UpdateSearchResultList( updateItems )
-	local startTime = GetTime()
-
 	if updateItems then
 		local enterItemsIntoList = MI2_SearchOptions.ListMode == "Items"
 		MI2_SearchForItems( MI2_SearchOptions.ItemName, enterItemsIntoList )
@@ -79,7 +77,6 @@ local function MI2_UpdateSearchResultList( updateItems )
 	end
 
 	MI2_DisplaySearchResult( MI2_SearchOptions.ListMode )
---	chattext( "<MobInfo> total search time = "..(GetTime()-startTime).." seconds" )
 end -- MI2_UpdateSearchResultList()
 
 
@@ -207,7 +204,7 @@ local function MI2_CalculateRank( mobData, mobLevel, sortMode )
 			value = copper2text( ceil(value / mobData.loots) )
 		end
 	elseif sortMode == "item" and mobData.itemList then
-		for idx, val in mobData.itemList do
+		for idx, val in pairs(mobData.itemList) do
 			local itemFound = string.find( MI2_ItemsIdxList, idx ) ~= nil
 			if itemFound then  rank = rank + val  end
 		end
@@ -235,10 +232,11 @@ local function MI2_CheckMob( mobInfo, mobName, mobLevel )
 	end
 	if nameOk and mobName ~= "" then
 		levelOk = mobLevel >= MI2_SearchOptions.MinLevel and mobLevel <= MI2_SearchOptions.MaxLevel
+		levelOk = levelOk or (mobLevel == -1)
 	end
 
 	-- check mob data related search conditions	
-	if levelOk or mobLevel == -1 then
+	if levelOk then
 		mobData = {}
 		MI2_DecodeBasicMobData( mobInfo, mobData )
 		mobData.loots = mobData.loots or 0
@@ -248,7 +246,7 @@ local function MI2_CheckMob( mobInfo, mobName, mobLevel )
 			if MI2_ItemsIdxList ~= ":" then
 				MI2_DecodeItemList( mobInfo, mobData )
 				if mobData.itemList then
-					for idx, val in mobData.itemList do
+					for idx, val in pairs(mobData.itemList) do
 						itemsOK = string.find( MI2_ItemsIdxList, ":"..idx..":" ) ~= nil
 						if itemsOK then break end
 					end
@@ -280,7 +278,7 @@ function MI2_SearchAndSort( )
 	
 	-- create a sorted list of mobs matching the search criteria
 	-- loop across all mobs in the MobInfo database
-	for mobIndex, mobInfo in MobInfoDB do
+	for mobIndex, mobInfo in pairs(MobInfoDB) do
 		mobName, mobLevel = MI2_GetIndexComponents( mobIndex )
 		mobData = MI2_CheckMob( mobInfo, mobName, mobLevel )
 
@@ -397,7 +395,7 @@ function MI2_ShowSearchResultTooltip()
 		if MI2_SearchOptions.ListMode == "Mobs" then
 			local index = MI2_SearchResultList[selection].idx
 			local mobName, mobLevel = MI2_GetIndexComponents( index )
-			local mobCaption = mobName.."  L"..mobLevel
+			local mobCaption = mobName..MI_TXT_SEARCH_LVL..mobLevel
 			if MI2_SearchResultList[selection].type then
 				mobCaption = mobCaption.."+"
 			end
@@ -451,11 +449,11 @@ end -- MI2_SearchTab_OnClick()
 -- This function is called when the user confirms the delete.
 -----------------------------------------------------------------------------
 function MI2_DeleteSearchResultMobs()
-	for idx, val in MI2_SearchResultList do
+	for idx, val in pairs(MI2_SearchResultList) do
 		local mobIndex = val.idx
 		MI2_DeleteMobData( mobIndex, true )
 	end
-	chattext( mifontLightBlue.."<MobInfo> deleted "..MI2_NumMobsFound.." Mobs from the MobInfo databases" )
+	chattext( MI_TXT_SEARCH_DEL..MI2_NumMobsFound..MI_TXT_SEARCH_MOBS )
 	MI2_UpdateSearchResultList()
 end -- MI2_DeleteSearchResultMobs()
 

@@ -2,29 +2,35 @@
 -- MI2_ConvDropRate.lua
 --
 -- author: NakorNH
--- this converter was written and submitted by NakorNH
+-- This DropRate database converter was written and submitted by NakorNH
 --
--- DropRate data converter for the MobInfo2 AddOn
 -- This converter will convert all Mobs found in the DropRate database
 -- and convert them into entries for the MobInfo2 database. Item data
 -- can only be converted if the item can be found in either the
 -- ItemSync or KC_Items or LootLink databases (thus either of these
 -- AddOns must be installed as well).
 --
--- Using LootLink is recommended for the conversion because AddOns sites
+-- Using LootLink is recommended for the conversion when you are not
+-- already using any of the 3 supported item database AddOns. AddOns sites
 -- like "http://ui.worldofwar.net" host huge LootLink item databases
 -- that ensure a high conversion success rate. After successful
 -- conversion LootLink can be uninstalled.
 --
+-- DropRate is an AddOn invented and coded by canidae. All credits for
+-- the idea of collecting Mob loot (and also other loot) in a database
+-- and present it in the game tooltip therefore go to canidae. The 
+-- original DropRate still exists and can for instance be found here:
+-- http://ui.worldofwar.net/ui.php?id=579
+--
 
 
-local MI_CONVERTER = mifontLightBlue.."<MobInfo DR Convert>"..mifontWhite.." "
-local MI_MOBSFOUND = " Mobs found in DropRate data,"
-local MI_NEWMOBSFOUND = " new Mobs added to database,"
-local MI_EXISTINGMOBS = " existing Mobs expanded,"
-local MI_PARTIALMOBS = " Mobs partially converted,"
-local MI_SKIPPEDITEMS = " unknown items skipped,"
-local MI_ADDEDITEMS = " items added to database,"
+local MI_CONVERTER = MI_TXT_CONVERTER
+local MI_MOBSFOUND = MI_TXT_MOBSFOUND
+local MI_NEWMOBSFOUND = MI_TXT_CONVDROPRATE_NEWMOBSFOUND
+local MI_EXISTINGMOBS = MI_TXT_CONVDROPRATE_EXISTINGMOBS
+local MI_PARTIALMOBS = MI_TXT_CONVDROPRATE_PARTIALMOBS
+local MI_SKIPPEDITEMS = MI_TXT_CONVDROPRATE_SKIPPEDITEMS
+local MI_ADDEDITEMS = MI_TXT_CONVDROPRATE_ADDEDITEMS
 
 
 -----------------------------------------------------------------------------
@@ -40,18 +46,18 @@ function MI2_StartDropRateConversion()
 	local itemsSkipped = 0
 	local itemsFound = 0
 
-	chattext( MI_CONVERTER.."DropRate conversion started ..." )
+	chattext( MI_CONVERTER..MI_TXT_CONVDROPRATE_CONVERSTART )
 	
 	if not drdb then
-		chattext( "DropRate database not found" )
+		chattext( MI_TXT_CONVDROPRATE_NOTFOUND )
 		return
 	end
 	
-	for mobName, value in drdb do
+	for mobName, value in pairs(drdb) do
 		local notCompleteMob = 0
 		local newMobData = {}
 		local drMobLevel
-		for index , value2 in value do
+		for index , value2 in pairs(value) do
 			if index == "level" then
 				drMobLevel = value2
 				totalMobs = totalMobs + 1
@@ -59,7 +65,7 @@ function MI2_StartDropRateConversion()
 		end	
 		
 		if drMobLevel then
-			for index, value2 in value do
+			for index, value2 in pairs(value) do
 				local drItemID = -1
 				if index == "level" then
 					drMobLevel = value2
@@ -119,18 +125,18 @@ function MI2_StartDropRateConversion()
 
 			-- add converted DropRate Mob data to existing MobInfo data
 			-- (creates new MobInfo database entry if Mob does not exist)
-			local origMobData = MI2_GetMobData(mobName,drMobLevel)
+			local origMobData = MI2_FetchMobData( mobName..":"..drMobLevel )
 			if origMobData.loots then
 				mobsExtended = mobsExtended + 1
 			else
 				newMobsFound = newMobsFound + 1
 			end	
 			MI2_AddTwoMobs(newMobData, origMobData)
-			MI2x_StoreMobData( newMobData, mobName, drMobLevel, MI2_PlayerName )
+			MI2_StoreAllMobData( newMobData, mobName, drMobLevel, MI2_PlayerName )
 
 			-- check if entire DropRate Mob entry has been converted
 			local remainingEntries = 0
-			for index in drdb[mobName] do
+			for index in pairs(drdb[mobName]) do
 				if index ~= "level" then
 					remainingEntries = remainingEntries + 1
 				end
@@ -163,7 +169,7 @@ end
 function MI2_drFindItemID(index)
 	-- Find item code from ItemSync
 	if ISyncDB_Names then
-		for ISItemID, ISItemName in ISyncDB_Names do
+		for ISItemID, ISItemName in pairs(ISyncDB_Names) do
 			if ISItemName == index then
 				return ISItemID
 			end
@@ -173,7 +179,7 @@ function MI2_drFindItemID(index)
 	-- Find item code from KC_Items (potentially dangerous : might cause disconnect
 	-- when calling "GetItemInfo()" with item ID not known on server)
 	if KC_ItemsDB then
-		for itemCode, itemInfo in KC_ItemsDB do
+		for itemCode, itemInfo in pairs(KC_ItemsDB) do
 			local itemName, itemLink = GetItemInfo(itemCode)
 			if itemName then
 				if itemName == index then
